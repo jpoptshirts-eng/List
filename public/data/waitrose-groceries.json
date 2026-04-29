@@ -1,0 +1,407 @@
+{
+  "source": "https://www.waitrose.com/ecom/shop/browse/groceries",
+  "fetchedAt": "2026-04-24T18:32:58.188Z",
+  "count": 50,
+  "products": [
+    {
+      "id": "wr-234917-1-2",
+      "name": "No.1 Albondigas with Tomato Sauce",
+      "price": 5,
+      "unitPrice": "£20.83/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_234917_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/no1-albondigas-with-tomato-sauce/234917-1-2"
+    },
+    {
+      "id": "wr-270129-851271-851272",
+      "name": "Showerings Triple Vintage Cider",
+      "price": 3.5,
+      "unitPrice": "£9.33/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_270129_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/showerings-triple-vintage-cider/270129-851271-851272"
+    },
+    {
+      "id": "wr-396809-1-2",
+      "name": "Waitrose Cheese & Ham Ploughman's Bites",
+      "price": 3.75,
+      "unitPrice": "£20.83/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_396809_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-cheese-ham-ploughmans-bites/396809-1-2"
+    },
+    {
+      "id": "wr-487080-497722-497723",
+      "name": "Waitrose Blueberries",
+      "price": 3.5,
+      "unitPrice": "£15.56/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_487080_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-blueberries/487080-497722-497723"
+    },
+    {
+      "id": "wr-517737-349824-349825",
+      "name": "Waitrose Sweet Potatoes",
+      "price": 0.38,
+      "unitPrice": "£1.30/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_517737_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-sweet-potatoes/517737-349824-349825"
+    },
+    {
+      "id": "wr-540706-779361-779362",
+      "name": "Waitrose 4 Brioche Burger Buns",
+      "price": 1.75,
+      "unitPrice": "44p each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_540706_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-4-brioche-burger-buns/540706-779361-779362"
+    },
+    {
+      "id": "wr-542940-724869-724870",
+      "name": "Waitrose Garlic & Chilli King Prawns",
+      "price": 4,
+      "unitPrice": "£36.36/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_542940_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-garlic-chilli-king-prawns/542940-724869-724870"
+    },
+    {
+      "id": "wr-603507-85619-85620",
+      "name": "Waitrose Seedless Easy Peelers",
+      "price": 2.55,
+      "unitPrice": "£4.25/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_603507_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-seedless-easy-peelers/603507-85619-85620"
+    },
+    {
+      "id": "wr-726503-298617-298618",
+      "name": "Andrex Ultimate Quilts Toilet Tissue Standard Roll",
+      "price": 8.95,
+      "unitPrice": "36.1p/100 sheets",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_726503_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/andrex-ultimate-quilts-toilet-tissue-standard-roll/726503-298617-298618"
+    },
+    {
+      "id": "wr-737731-202407-202408",
+      "name": "Waitrose Guacamole Dip",
+      "price": 1.85,
+      "unitPrice": "£10.88/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_737731_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-guacamole-dip/737731-202407-202408"
+    },
+    {
+      "id": "wr-783659-337147-337147",
+      "name": "Actimel Immunity Strawberry & Blueberry Live Yogurt Drinks",
+      "price": 4.75,
+      "unitPrice": "£3.96/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_783659_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/actimel-immunity-strawberry-blueberry-live-yogurt-drinks/783659-337147-337147"
+    },
+    {
+      "id": "wr-805332-665151-665152",
+      "name": "Waitrose Blueberries",
+      "price": 4.6,
+      "unitPrice": "£12.78/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_805332_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-blueberries/805332-665151-665152"
+    },
+    {
+      "id": "wr-829563-826872-826873",
+      "name": "Alpro Barista Coconut Chilled Dairy Free Milk Alternative",
+      "price": 1.25,
+      "unitPrice": "£1.67/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_829563_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/alpro-barista-coconut-chilled-dairy-free-milk-alternative/829563-826872-826873"
+    },
+    {
+      "id": "wr-851002-759780-759781",
+      "name": "Kleenex Collection Tissues Cube",
+      "price": 0.75,
+      "unitPrice": "£1.57/100 sheets",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_851002_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/kleenex-collection-tissues-cube/851002-759780-759781"
+    },
+    {
+      "id": "wr-856360-694024-694025",
+      "name": "Waitrose Shallots",
+      "price": 0.16,
+      "unitPrice": "£4.05/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_856360_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-shallots/856360-694024-694025"
+    },
+    {
+      "id": "wr-856706-653765-653766",
+      "name": "Essential Free Range White Eggs",
+      "price": 1.5,
+      "unitPrice": "25p each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_856706_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-free-range-white-eggs/856706-653765-653766"
+    },
+    {
+      "id": "wr-869601-285667-285668",
+      "name": "Red Bull Energy Drink Sugar Free",
+      "price": 8,
+      "unitPrice": "£4/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_869601_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/red-bull-energy-drink-sugar-free/869601-285667-285668"
+    },
+    {
+      "id": "wr-878309-786006-786007",
+      "name": "Waitrose Red Seedless Grapes",
+      "price": 2.5,
+      "unitPrice": "£5/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_878309_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-red-seedless-grapes/878309-786006-786007"
+    },
+    {
+      "id": "wr-903708-1-2",
+      "name": "No.1 Burrata with Aubergine Caponata",
+      "price": 5,
+      "unitPrice": "£13.51/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_903708_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/no1-burrata-with-aubergine-caponata/903708-1-2"
+    },
+    {
+      "id": "wr-911108-1-2",
+      "name": "No.1 2 Brioche Rolls",
+      "price": 2,
+      "unitPrice": "£1 each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_911108_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/no1-2-brioche-rolls/911108-1-2"
+    },
+    {
+      "id": "wr-935612-1-2",
+      "name": "Waitrose Passion Fruit & Raspberry Cheesecake",
+      "price": 6,
+      "unitPrice": "£11.36/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_935612_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-passion-fruit-raspberry-cheesecake/935612-1-2"
+    },
+    {
+      "id": "wr-955266-1-2",
+      "name": "Waitrose Coronation Chicken Quiche",
+      "price": 3.75,
+      "unitPrice": "£9.38/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_955266_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-coronation-chicken-quiche/955266-1-2"
+    },
+    {
+      "id": "wr-961934-1-2",
+      "name": "Waitrose 2 Secret Centre Strawberries",
+      "price": 4.5,
+      "unitPrice": "£30.41/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_961934_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-2-secret-centre-strawberries/961934-1-2"
+    },
+    {
+      "id": "wr-984497-1-2",
+      "name": "No.1 Gran Reserva Serrano Ham & Manchego Cheese Semicurado",
+      "price": 5.6,
+      "unitPrice": "£46.67/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_984497_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/no1-gran-reserva-serrano-ham-manchego-cheese-semicurado/984497-1-2"
+    },
+    {
+      "id": "wr-993033-1-2",
+      "name": "Waitrose Ardennes Pâté",
+      "price": 3,
+      "unitPrice": "£17.65/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_993033_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-ardennes-pate/993033-1-2"
+    },
+    {
+      "id": "wr-999042-1-2",
+      "name": "Waitrose Brussels Pâté",
+      "price": 3,
+      "unitPrice": "£17.65/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_999042_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-brussels-pate/999042-1-2"
+    },
+    {
+      "id": "wr-088903-45703-45704",
+      "name": "Waitrose Fairtrade Single Bananas",
+      "price": 0.2,
+      "unitPrice": "£1.10/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_088903_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-fairtrade-single-bananas/088903-45703-45704"
+    },
+    {
+      "id": "wr-085125-43221-43222",
+      "name": "Waitrose British Loose Carrots",
+      "price": 0.1,
+      "unitPrice": "70p/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_085125_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-british-loose-carrots/085125-43221-43222"
+    },
+    {
+      "id": "wr-071469-36254-36255",
+      "name": "Andrex Complete Clean Toilet Tissue Standard Roll",
+      "price": 6.6,
+      "unitPrice": "39p/100 sheets",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_071469_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/andrex-complete-clean-toilet-tissue-standard-roll/071469-36254-36255"
+    },
+    {
+      "id": "wr-032584-15927-15928",
+      "name": "Domestos Thick Bleach Original Toilet Cleaner",
+      "price": 1.6,
+      "unitPrice": "£2.13/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_032584_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/domestos-thick-bleach-original-toilet-cleaner/032584-15927-15928"
+    },
+    {
+      "id": "wr-073921-37516-37517",
+      "name": "Domestos Thick Bleach Citrus Toilet Cleaner",
+      "price": 1.6,
+      "unitPrice": "£2.13/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_073921_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/domestos-thick-bleach-citrus-toilet-cleaner/073921-37516-37517"
+    },
+    {
+      "id": "wr-039832-19712-19713",
+      "name": "Waitrose Ciabatta Rolls",
+      "price": 1.8,
+      "unitPrice": "45p each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_039832_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-ciabatta-rolls/039832-19712-19713"
+    },
+    {
+      "id": "wr-034178-17117-17118",
+      "name": "Waitrose Quiche Lorraine",
+      "price": 3.75,
+      "unitPrice": "£9.38/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_034178_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-quiche-lorraine/034178-17117-17118"
+    },
+    {
+      "id": "wr-085701-372143-43723",
+      "name": "Waitrose Loose Cup Mushrooms",
+      "price": 0.1,
+      "unitPrice": "£3.40/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_085701_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-loose-cup-mushrooms/085701-372143-43723"
+    },
+    {
+      "id": "wr-085035-43141-43142",
+      "name": "Waitrose Loose Baby Potatoes",
+      "price": 0.08,
+      "unitPrice": "£1.25/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_085035_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-loose-baby-potatoes/085035-43141-43142"
+    },
+    {
+      "id": "wr-053457-26759-26760",
+      "name": "Essential British Free Range Semi-Skimmed Milk 4 Pints",
+      "price": 1.75,
+      "unitPrice": "77p/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053457_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-british-free-range-semi-skimmed-milk-4-pints/053457-26759-26760"
+    },
+    {
+      "id": "wr-085115-43203-43204",
+      "name": "Waitrose Onions",
+      "price": 0.16,
+      "unitPrice": "£1.05/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_085115_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-onions/085115-43203-43204"
+    },
+    {
+      "id": "wr-086468-44158-44159",
+      "name": "Essential Cucumber",
+      "price": 1.1,
+      "unitPrice": "£1.10 each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_086468_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-cucumber/086468-44158-44159"
+    },
+    {
+      "id": "wr-088528-45453-45454",
+      "name": "Essential Fairtrade Bananas",
+      "price": 1,
+      "unitPrice": "20p each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_088528_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-fairtrade-bananas/088528-45453-45454"
+    },
+    {
+      "id": "wr-019292-9331-9332",
+      "name": "Perfectly Ripe Avocados",
+      "price": 1.9,
+      "unitPrice": "95p each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_019292_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/perfectly-ripe-avocados/019292-9331-9332"
+    },
+    {
+      "id": "wr-053448-26749-26750",
+      "name": "Essential British Free Range Semi-Skimmed Milk 2 Pints",
+      "price": 1.25,
+      "unitPrice": "£1.10/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053448_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-british-free-range-semi-skimmed-milk-2-pints/053448-26749-26750"
+    },
+    {
+      "id": "wr-032579-15919-15920",
+      "name": "Waitrose Echalion Shallots",
+      "price": 4.05,
+      "unitPrice": "(per kg)",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_032579_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-echalion-shallots/032579-15919-15920"
+    },
+    {
+      "id": "wr-086412-44120-44121",
+      "name": "Waitrose Red Peppers",
+      "price": 0.72,
+      "unitPrice": "£4.50/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_086412_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-red-peppers/086412-44120-44121"
+    },
+    {
+      "id": "wr-088411-45361-45362",
+      "name": "Waitrose Loose Lemons",
+      "price": 0.4,
+      "unitPrice": "40p each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_088411_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-loose-lemons/088411-45361-45362"
+    },
+    {
+      "id": "wr-085242-43323-43324",
+      "name": "Essential Broccoli",
+      "price": 0.96,
+      "unitPrice": "£2.40/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_085242_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-broccoli/085242-43323-43324"
+    },
+    {
+      "id": "wr-085111-43197-43198",
+      "name": "Waitrose Red Onions",
+      "price": 0.17,
+      "unitPrice": "£1/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_085111_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-red-onions/085111-43197-43198"
+    },
+    {
+      "id": "wr-085127-415835-43225",
+      "name": "Essential British Carrots",
+      "price": 0.7,
+      "unitPrice": "70p/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_085127_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-british-carrots/085127-415835-43225"
+    },
+    {
+      "id": "wr-009596-4741-4742",
+      "name": "Waitrose Cherry Vine Tomatoes",
+      "price": 3.45,
+      "unitPrice": "£8.63/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_009596_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/waitrose-cherry-vine-tomatoes/009596-4741-4742"
+    },
+    {
+      "id": "wr-086453-44148-44149",
+      "name": "Essential Bunched Salad Onions",
+      "price": 0.8,
+      "unitPrice": "80p each",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_086453_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-bunched-salad-onions/086453-44148-44149"
+    },
+    {
+      "id": "wr-019062-9205-9206",
+      "name": "Essential Baked Beans in Tomato Sauce",
+      "price": 0.55,
+      "unitPrice": "£1.31/kg",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_019062_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-baked-beans-in-tomato-sauce/019062-9205-9206"
+    }
+  ]
+}
