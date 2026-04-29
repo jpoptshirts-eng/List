@@ -72,13 +72,15 @@ export function detectMimeType(): string | null {
  * @param onInterimText  Optional callback for real-time interim text from the
  *                       Web Speech API fallback path.
  */
+const USE_CLOUD_STT = false
+
 export async function startSpeechRecording(
   onInterimText?: (text: string) => void,
 ): Promise<SpeechRecordingHandle | null> {
   const mimeType = detectMimeType()
 
   // ── MediaRecorder path (primary — feeds Google Cloud STT) ────────────────
-  if (mimeType && isSupabaseConfigured()) {
+  if (USE_CLOUD_STT && mimeType && isSupabaseConfigured()) {
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
