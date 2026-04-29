@@ -6,11 +6,10 @@ export interface SpeechRecordingHandle {
   /** Promise that resolves with the transcribed text once recording ends. */
   result: Promise<SpeechToTextResult>
   /**
-   * The live mic MediaStream (MediaRecorder path only).
-   * The caller can connect this to an AudioContext/AnalyserNode for
+   * The live mic MediaStream — connect to AudioContext/AnalyserNode for
    * reactive visualisation. Tracks are stopped automatically after
    * recording ends — the caller should clear any AudioContext by then.
-   * null on the Web Speech API fallback path.
+   * null when MediaRecorder is unavailable.
    */
   stream: MediaStream | null
 }
@@ -59,106 +58,147 @@ export function detectMimeType(): string | null {
 }
 
 /**
- * Start recording microphone audio and return a handle that lets the caller
- * stop recording and get back a transcript.
- *
- * The transcript is produced by Google Cloud Speech-to-Text via the Supabase
- * edge function when possible.  Falls back to the browser Web Speech API when:
- *   - Supabase is not configured
- *   - The edge function call fails
- *   - MediaRecorder is not supported (Safari older than 14.1)
- *   - The detected MIME type is unsupported by Google STT
- *
- * @param onInterimText  Optional callback for real-time interim text from the
- *                       Web Speech API fallback path.
+ * Attempt to transcribe audio via the Supabase cloud STT edge function.
+ * Returns null if Supabase is unavailable or the call fails.
  */
-// Prefer the Supabase + MediaRecorder path when Supabase is configured;
-// fall back to Web Speech API elsewhere.
-const USE_CLOUD_STT = true
+async function tryCloudStt(chunks: Blob[], mimeType: string): Promise<string | null> {
+  const supabase = getSupabase()
+  if (!supabase) return null
+  try {
+    const audioBase64 = await blobToBase64(new Blob(chunks, { type: mimeType }))
+    const { data, error } = await supabase.functions.invoke<{ text: string; error?: string }>(
+      'speech-to-text',
+      { body: { audioBase64, mimeType } },
+    )
+    if (error || data?.error) return null
+    const text = data?.text?.trim() ?? ''
+    return text.length > 0 ? text : null
+  } catch {
+    return null
+  }
+}
 
+/**
+ * Start recording microphone audio and return a handle.
+ *
+ * Strategy:
+ *  1. If MediaRecorder is available, open a real mic stream so the AnalyserNode
+ *     equaliser reacts to live audio.
+ *  2. The Web Speech API runs simultaneously for transcription (reliable, no
+ *     server required).
+ *  3. When Supabase is configured, the cloud STT result is also attempted and
+ *     preferred if it succeeds; Web Speech is always the fallback.
+ */
 export async function startSpeechRecording(
   onInterimText?: (text: string) => void,
 ): Promise<SpeechRecordingHandle | null> {
-  const mimeType = detectMimeType()
-
-  // ── MediaRecorder path (primary — feeds Google Cloud STT) ────────────────
-  if (USE_CLOUD_STT && mimeType && isSupabaseConfigured()) {
-    let stream: MediaStream
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      return null
-    }
-
-    const recorder = new MediaRecorder(stream, { mimeType })
-    const chunks: Blob[] = []
-
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data)
-    }
-
-    let resolveResult!: (r: SpeechToTextResult) => void
-    const result = new Promise<SpeechToTextResult>((res) => { resolveResult = res })
-
-    recorder.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop())
-
-      const audioBlob = new Blob(chunks, { type: mimeType })
-
-      const supabase = getSupabase()
-      if (!supabase) {
-        resolveResult({ ok: false, text: '', error: 'Supabase client unavailable', usedCloudApi: false })
-        return
-      }
-
-      try {
-        const audioBase64 = await blobToBase64(audioBlob)
-        const { data, error } = await supabase.functions.invoke<{ text: string; error?: string }>(
-          'speech-to-text',
-          { body: { audioBase64, mimeType } },
-        )
-
-        if (error) {
-          resolveResult({ ok: false, text: '', error: error.message, usedCloudApi: true })
-          return
-        }
-        if (data?.error) {
-          resolveResult({ ok: false, text: '', error: data.error, usedCloudApi: true })
-          return
-        }
-
-        const text = data?.text?.trim() ?? ''
-        resolveResult({ ok: text.length > 0, text, usedCloudApi: true })
-      } catch (err) {
-        resolveResult({
-          ok: false,
-          text: '',
-          error: err instanceof Error ? err.message : String(err),
-          usedCloudApi: true,
-        })
-      }
-    }
-
-    recorder.start()
-
-    return {
-      stop: () => {
-        if (recorder.state !== 'inactive') recorder.stop()
-      },
-      result,
-      stream,
-    }
-  }
-
-  // ── Web Speech API fallback ───────────────────────────────────────────────
   const SpeechRecognition =
     (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition })
       .SpeechRecognition ??
     (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition })
       .webkitSpeechRecognition
 
-  if (!SpeechRecognition) return null
+  const mimeType = detectMimeType()
 
+  // ── Hybrid: MediaRecorder (equaliser stream) + Web Speech (transcription) ──
+  if (mimeType && SpeechRecognition) {
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      // No mic permission — fall through to Web Speech only
+      return startWebSpeechOnly(SpeechRecognition, onInterimText)
+    }
+
+    const recorder = new MediaRecorder(stream, { mimeType })
+    const chunks: Blob[] = []
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+
+    // Web Speech API for transcription
+    const rec = new SpeechRecognition()
+    rec.lang = 'en-GB'
+    rec.continuous = true
+    rec.interimResults = true
+    rec.maxAlternatives = 1
+
+    let wsBuffer = ''
+    let resolveResult!: (r: SpeechToTextResult) => void
+    const result = new Promise<SpeechToTextResult>((res) => { resolveResult = res })
+    let resolved = false
+
+    const settle = (r: SpeechToTextResult) => {
+      if (resolved) return
+      resolved = true
+      resolveResult(r)
+    }
+
+    rec.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const r = event.results[i]
+        const t = r[0]?.transcript?.trim() ?? ''
+        if (r.isFinal) {
+          wsBuffer = wsBuffer ? `${wsBuffer}, ${t}` : t
+        } else {
+          interim = t
+        }
+      }
+      if (onInterimText) onInterimText(interim || wsBuffer)
+    }
+
+    rec.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === 'aborted') return
+      // Don't reject entirely — we may still get a cloud result
+    }
+
+    rec.onend = async () => {
+      // Web Speech finished — try cloud STT first, fall back to Web Speech buffer
+      if (isSupabaseConfigured() && chunks.length > 0) {
+        const cloudText = await tryCloudStt(chunks, mimeType)
+        if (cloudText) {
+          settle({ ok: true, text: cloudText, usedCloudApi: true })
+          return
+        }
+      }
+      const text = wsBuffer.trim()
+      settle({ ok: text.length > 0, text, usedCloudApi: false })
+    }
+
+    try {
+      rec.start()
+      recorder.start()
+    } catch {
+      stream.getTracks().forEach((t) => t.stop())
+      return null
+    }
+
+    return {
+      stop: () => {
+        try { rec.stop() } catch { /* noop */ }
+        if (recorder.state !== 'inactive') {
+          recorder.onstop = () => { stream.getTracks().forEach((t) => t.stop()) }
+          recorder.stop()
+        } else {
+          stream.getTracks().forEach((t) => t.stop())
+        }
+      },
+      result,
+      stream,
+    }
+  }
+
+  // ── Web Speech only (no MediaRecorder available) ───────────────────────────
+  if (SpeechRecognition) {
+    return startWebSpeechOnly(SpeechRecognition, onInterimText)
+  }
+
+  return null
+}
+
+function startWebSpeechOnly(
+  SpeechRecognition: typeof window.SpeechRecognition,
+  onInterimText?: (text: string) => void,
+): SpeechRecordingHandle | null {
   const rec = new SpeechRecognition()
   rec.lang = 'en-GB'
   rec.continuous = true
@@ -200,9 +240,7 @@ export async function startSpeechRecording(
   }
 
   return {
-    stop: () => {
-      try { rec.stop() } catch { /* noop */ }
-    },
+    stop: () => { try { rec.stop() } catch { /* noop */ } },
     result,
     stream: null,
   }
