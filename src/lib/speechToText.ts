@@ -88,18 +88,17 @@ export async function startSpeechRecording(
     settle({ ok: text.length > 0, text, usedCloudApi: false })
   }
 
-  try { rec.start() } catch { return null }
-
-  // ── Get mic stream for equaliser (no MediaRecorder — avoids conflicts) ─────
+  // ── Get mic stream for equaliser first, then start Web Speech ───────────────
+  // Acquiring the stream before rec.start() avoids Chrome interrupting Web
+  // Speech when getUserMedia fires mid-recognition.
   let stream: MediaStream | null = null
-  // Only capture the stream for visualisation; Web Speech handles audio capture
-  // independently. We request the stream *after* Web Speech starts to avoid any
-  // browser lock-out of the audio device.
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   } catch {
-    // No permission or unavailable — equaliser falls back to CSS pulse
+    // No permission — equaliser falls back to CSS pulse, Web Speech still works
   }
+
+  try { rec.start() } catch { return null }
 
   // ── Optional: also record via MediaRecorder for cloud STT on stop ──────────
   const mimeType = detectMimeType()

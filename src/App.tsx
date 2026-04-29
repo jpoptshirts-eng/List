@@ -1672,7 +1672,11 @@ function App() {
       speechRecordingHandleRef.current = null
 
       if (!sttResult.ok || !sttResult.text.trim()) {
-        // Nothing was said or transcription failed — leave textarea unchanged.
+        setListInputError(
+          sttResult.error
+            ? `Speech recognition error: ${sttResult.error}. Try again or type your list.`
+            : 'Nothing was heard — please try the mic again or type your list.',
+        )
         return
       }
 
