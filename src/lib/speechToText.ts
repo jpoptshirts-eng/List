@@ -72,7 +72,9 @@ export function detectMimeType(): string | null {
  * @param onInterimText  Optional callback for real-time interim text from the
  *                       Web Speech API fallback path.
  */
-const USE_CLOUD_STT = false
+// Prefer the Supabase + MediaRecorder path when Supabase is configured;
+// fall back to Web Speech API elsewhere.
+const USE_CLOUD_STT = true
 
 export async function startSpeechRecording(
   onInterimText?: (text: string) => void,
