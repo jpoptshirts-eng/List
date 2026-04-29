@@ -49,6 +49,8 @@ type SwapTarget =
   | { kind: 'meal'; mealId: string; ingredientId: string; item: SwapItem }
   | { kind: 'essential'; id: string; item: SwapItem }
 
+type AppView = 'index' | 'build'
+
 const defaultInspiration = ['Spaghetti Bolognese', 'Shepherd’s Pie', 'Salmon & veg', 'Japanese pancakes', 'Lemon drizzle']
 
 const PERSONALISED_POOL = [
@@ -1090,6 +1092,10 @@ function App() {
   const [mealGroups, setMealGroups] = useState<MealGroup[]>([])
   const [essentials, setEssentials] = useState<Essential[]>([])
 
+  const [appView, setAppView] = useState<AppView>('index')
+  const [listName, setListName] = useState('')
+  const [newListNameInput, setNewListNameInput] = useState('')
+
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const listInputRef = useRef<HTMLTextAreaElement | null>(null)
   /** Chip inspiration skips the textarea; don’t auto-hide results while this is true. */
@@ -1386,9 +1392,11 @@ function App() {
           ? meal
           : {
               ...meal,
-              ingredients: meal.ingredients.map((item) =>
-                item.id !== ingredientId ? item : { ...item, qty: Math.max(1, item.qty + delta) },
-              ),
+              ingredients: meal.ingredients.map((item) => {
+                if (item.id !== ingredientId) return item
+                const newQty = Math.max(0, item.qty + delta)
+                return { ...item, qty: newQty, selected: newQty > 0 }
+              }),
             },
       ),
     )
@@ -1396,7 +1404,11 @@ function App() {
 
   function changeEssentialQty(id: string, delta: number) {
     setEssentials((prev) =>
-      prev.map((item) => (item.id !== id ? item : { ...item, qty: Math.max(1, item.qty + delta) })),
+      prev.map((item) => {
+        if (item.id !== id) return item
+        const newQty = Math.max(0, item.qty + delta)
+        return { ...item, qty: newQty, selected: newQty > 0 }
+      }),
     )
   }
 
@@ -1748,6 +1760,33 @@ function App() {
     })()
   }
 
+  // Derived values for the index list tile
+  const activeMealGroups = mealGroups.filter((m) => !m.removed)
+  const listPreviewImages = [
+    ...activeMealGroups.flatMap((m) => m.ingredients).map((i) => i.image),
+    ...essentials.map((e) => e.image),
+  ].filter(Boolean).slice(0, 4)
+  const listMealCount = activeMealGroups.length
+  const listItemCount = activeMealGroups.reduce((s, m) => s + m.ingredients.length, 0) + essentials.length
+  const listMetaLine = listName
+    ? listMealCount > 0
+      ? `${listMealCount} meal${listMealCount === 1 ? '' : 's'}, ${listItemCount} item${listItemCount === 1 ? '' : 's'}`
+      : `${listItemCount} item${listItemCount === 1 ? '' : 's'}`
+    : ''
+  const hasExistingList = !!listName
+
+  function createNewList() {
+    const name = newListNameInput.trim()
+    if (!name) return
+    setListName(name)
+    setNewListNameInput('')
+    setMealGroups([])
+    setEssentials([])
+    setGenerated(false)
+    setInputValue('')
+    setAppView('build')
+  }
+
   return (
     <main className="app-shell min-h-screen bg-[#fafafa] pb-32 font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]">
       <header className="border-b border-[#ddd] bg-white">
@@ -1820,16 +1859,165 @@ function App() {
             </div>
           </div>
         </div>
-        <div className="bg-[#C4D600] py-2 text-center text-[16px] font-normal text-[#154734]">3 for £12 BBQ mix & match | <u>Shop now</u></div>
-        <div className="mx-auto flex w-full max-w-[1260px] gap-2 border-t border-[#ddd] px-4 py-3 text-[14px]">
-          <span className="underline">Home</span><span>&gt;</span><span className="underline">Shopping lists</span>
-        </div>
+        <div className="bg-[#C4D600] py-2 text-center text-[16px] font-normal text-[#154734]">New lower prices on even more everyday items | <u>Shop now</u></div>
+        {appView === 'index' ? (
+          <div className="flex items-center justify-center border-b border-[#ddd]">
+            <div className="flex items-center">
+              {(['Previous orders', 'Quick Shop', 'Bought in-store', 'Shopping lists'] as const).map((tab) => (
+                <div
+                  key={tab}
+                  className={`flex h-[52px] items-center justify-center px-3 text-[16px] ${tab === 'Shopping lists' ? 'border-b-2 border-[#333]' : 'border-b-2 border-[#ddd]'}`}
+                >
+                  {tab}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mx-auto flex w-full max-w-[1260px] gap-2 border-t border-[#ddd] px-4 py-3 text-[14px]">
+            <button className="underline" onClick={() => setAppView('index')}>Home</button>
+            <span>&gt;</span>
+            <button className="underline" onClick={() => setAppView('index')}>Shopping lists</button>
+            <span>&gt;</span>
+          </div>
+        )}
       </header>
 
       <section className="mx-auto mt-4 w-full max-w-[1260px] px-4 lg:mt-6 lg:px-8">
-        <div className="font-waitrose-display mb-6 text-center text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]">
-          BUILD A SHOP
-        </div>
+
+        {/* ── INDEX VIEW ── */}
+        {appView === 'index' && (
+          <>
+            <div className="mb-6 text-center text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]">
+              SHOPPING LISTS
+            </div>
+            <div className="mx-auto flex w-full max-w-[768px] flex-col gap-10 sm:flex-row sm:items-start sm:gap-10">
+              {/* Create a list tile */}
+              <div className="flex w-full shrink-0 items-center justify-center border border-dashed border-[#a9a9a9] bg-white p-6 sm:w-[343px] sm:min-h-[184px]">
+                <form
+                  className="flex w-full flex-col gap-3"
+                  onSubmit={(e) => { e.preventDefault(); createNewList() }}
+                >
+                  <label className="text-[14px] font-medium text-[#53565A]" htmlFor="new-list-name">
+                    List name
+                  </label>
+                  <div className="flex flex-col gap-1">
+                    <input
+                      id="new-list-name"
+                      type="text"
+                      maxLength={20}
+                      value={newListNameInput}
+                      onChange={(e) => setNewListNameInput(e.target.value)}
+                      className="w-full border-b border-[#a9a9a9] bg-transparent pb-1 text-[16px] outline-none focus:border-[#154734]"
+                      placeholder=""
+                      autoComplete="off"
+                    />
+                    <span className="text-right text-[12px] text-[#a9a9a9]">{newListNameInput.length}/20</span>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!newListNameInput.trim()}
+                    className="mt-1 bg-[#53565A] px-5 py-2 text-[16px] text-white disabled:bg-[#eeeeee] disabled:text-[#a9a9a9]"
+                  >
+                    Create list
+                  </button>
+                </form>
+              </div>
+
+              {/* Existing list tile */}
+              {hasExistingList && (
+                <div className="w-full bg-white shadow-[0px_2px_1px_rgba(0,0,0,0.02)] sm:flex-1">
+                  <div className="flex items-center justify-between border-b border-[#ddd] p-4">
+                    <div className="flex items-center gap-4 text-[16px]">
+                      <span className="font-medium">{listName}</span>
+                      <span className="font-light text-[#53565A]">{listMetaLine}</span>
+                    </div>
+                    <button
+                      aria-label="Delete list"
+                      className="text-[#757575]"
+                      onClick={() => { setListName(''); setMealGroups([]); setEssentials([]); setGenerated(false) }}
+                    >
+                      <IconBin />
+                    </button>
+                  </div>
+                  {listPreviewImages.length > 0 ? (
+                    <div className="flex items-center gap-0 px-4 py-4">
+                      {listPreviewImages.map((src, i) => (
+                        <button
+                          key={i}
+                          className="size-[70px] shrink-0 overflow-hidden bg-[#fafafa]"
+                          onClick={() => setAppView('build')}
+                          aria-label="Open list"
+                        >
+                          {/^https?:\/\//i.test(src) ? (
+                            <img src={src} alt="" className="size-full object-cover" loading="lazy" />
+                          ) : (
+                            <span className="flex size-full items-center justify-center text-[22px]">{src}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-4">
+                      <button
+                        className="text-[16px] font-medium underline"
+                        onClick={() => setAppView('build')}
+                      >
+                        Start building your list
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex justify-end px-4 pb-4">
+                    <button
+                      className="text-[16px] font-medium underline"
+                      onClick={() => setAppView('build')}
+                    >
+                      View
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!hasExistingList && (
+                <div className="w-full bg-white shadow-[0px_2px_1px_rgba(0,0,0,0.02)] sm:flex-1">
+                  <div className="flex items-center justify-between border-b border-[#ddd] p-4">
+                    <div className="flex items-center gap-4 text-[16px]">
+                      <span className="font-medium">List name</span>
+                      <span className="font-light text-[#53565A]">0 items</span>
+                    </div>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="M3 4.5 6 7.5 9 4.5" stroke="#333" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div className="px-4 py-4">
+                    <button className="text-[16px] font-medium underline text-[#333]">
+                      Start building your list
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── BUILD VIEW ── */}
+        {appView === 'build' && (
+          <>
+            {/* Back arrow + list name heading */}
+            <div className="relative mb-6 flex items-center">
+              <button
+                aria-label="Back to shopping lists"
+                className="absolute left-0 flex items-center p-1 text-[#333]"
+                onClick={() => setAppView('index')}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M12 4L6 10l6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              <div className="w-full text-center text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]">
+                {listName || 'LIST NAME'}
+              </div>
+            </div>
         <div className="mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4">
           <form
             className="block"
@@ -2045,6 +2233,12 @@ function App() {
                         price={formatCurrency(item.price)}
                         unitPrice={item.unitPrice}
                         qty={item.qty}
+                        selected={item.selected}
+                        onToggleSelected={() =>
+                          setEssentials((prev) =>
+                            prev.map((e) => (e.id === item.id ? { ...e, selected: !e.selected } : e)),
+                          )
+                        }
                         onSwap={() => setSwapTarget({ kind: 'essential', id: item.id, item: { name: item.name, image: item.image, price: item.price, unitPrice: item.unitPrice } })}
                         onQtyDelta={(d) => changeEssentialQty(item.id, d)}
                         onRemove={() => {
@@ -2070,8 +2264,11 @@ function App() {
             )}
           </div>
         )}
+          </>
+        )}
       </section>
 
+      {appView === 'build' && (
       <footer className="fixed bottom-0 left-0 right-0 border-t border-[#ddd] bg-white shadow-[0px_-2px_4px_0px_rgba(0,0,0,0.05)]">
         <div className="mx-auto flex w-full max-w-[1259px] flex-col items-center">
           <div className="flex w-full max-w-[768px] items-center justify-center gap-3 px-4 pb-4 pt-3 max-md:flex-col max-md:items-center max-md:justify-end max-md:gap-3 max-md:p-4">
@@ -2102,6 +2299,7 @@ function App() {
           </div>
         </div>
       </footer>
+      )}
 
       {showPreferences && (
         <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/30 p-0 md:items-center md:p-4">

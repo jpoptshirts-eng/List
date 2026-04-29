@@ -21,6 +21,8 @@ type EssentialPodProps = {
   price: string
   unitPrice: string
   qty: number
+  selected: boolean
+  onToggleSelected: () => void
   onSwap: () => void
   onQtyDelta: (d: number) => void
   onRemove: () => void
@@ -61,7 +63,7 @@ export function QuantityNumerator({
   function commit(raw: string) {
     editingRef.current = false
     const parsed = parseInt(raw, 10)
-    if (!Number.isNaN(parsed) && parsed >= 1) {
+    if (!Number.isNaN(parsed) && parsed >= 0) {
       const delta = parsed - qty
       if (delta !== 0) onDelta(delta)
       setInputVal(String(parsed))
@@ -237,9 +239,21 @@ export function RecipeProductPod({
   )
 }
 
-/** Essentials: no checkbox. Mobile — thumb | name + Swap + prices | qty + bin on right; Desktop — single row. */
-export function EssentialProductPod({ name, image, price, unitPrice, qty, onSwap, onQtyDelta, onRemove }: EssentialPodProps) {
+/** Essentials: checkbox + thumb + name + Swap; qty + price + bin. Mobile + Desktop per Figma. */
+export function EssentialProductPod({ name, image, price, unitPrice, qty, selected, onToggleSelected, onSwap, onQtyDelta, onRemove }: EssentialPodProps) {
   const idPrefix = `ess-${name}`.replace(/\s+/g, '-').slice(0, 48)
+
+  const checkbox = (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={selected}
+      onClick={onToggleSelected}
+      className={`flex size-5 shrink-0 items-center justify-center border border-[#333] p-0.5 ${selected ? 'bg-[#333]' : 'bg-white'}`}
+    >
+      {selected ? <IconTick /> : null}
+    </button>
+  )
 
   const nameBlock = (
     <div className="min-w-0 flex-1">
@@ -269,6 +283,7 @@ export function EssentialProductPod({ name, image, price, unitPrice, qty, onSwap
     <div className="bg-white">
       {/* Mobile */}
       <div className="flex items-start gap-3 px-4 py-4 md:hidden">
+        {checkbox}
         <ProductThumb label={image} />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           {nameBlock}
@@ -283,6 +298,7 @@ export function EssentialProductPod({ name, image, price, unitPrice, qty, onSwap
 
       {/* Desktop */}
       <div className="hidden min-h-[72px] items-center gap-4 px-4 py-3 md:flex">
+        {checkbox}
         <div className="flex min-w-0 flex-1 items-center gap-5">
           <ProductThumb label={image} />
           {nameBlock}
