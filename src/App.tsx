@@ -1135,6 +1135,7 @@ function ReactiveEqualizer({ analyser }: { analyser: AnalyserNode | null }) {
 
     // Capture in a stable variable for the animation tick closure.
     const a = analyser
+    // Using `a` avoids TS18047 complaints about `analyser` potentially being null.
     a.fftSize = 512
     const N = a.frequencyBinCount // 256 bins
     const data = new Uint8Array(N)
