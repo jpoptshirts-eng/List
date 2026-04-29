@@ -1863,7 +1863,7 @@ function App() {
         {appView === 'index' ? (
           <div className="flex items-center justify-center border-b border-[#ddd]">
             <div className="flex items-center">
-              {(['Previous orders', 'Quick Shop', 'Bought in-store', 'Shopping lists'] as const).map((tab) => (
+              {(['Favourites', 'Previous orders', 'Quick Shop', 'Bought in-store', 'Shopping lists'] as const).map((tab) => (
                 <div
                   key={tab}
                   className={`flex h-[52px] items-center justify-center px-3 text-[16px] ${tab === 'Shopping lists' ? 'border-b-2 border-[#333]' : 'border-b-2 border-[#ddd]'}`}
@@ -1990,7 +1990,10 @@ function App() {
                     </svg>
                   </div>
                   <div className="px-4 py-4">
-                    <button className="text-[16px] font-medium underline text-[#333]">
+                    <button
+                      className="text-[16px] font-medium underline text-[#333]"
+                      onClick={() => { if (!listName) setListName('My list'); setAppView('build') }}
+                    >
                       Start building your list
                     </button>
                   </div>
@@ -2004,7 +2007,7 @@ function App() {
         {appView === 'build' && (
           <>
             {/* Back arrow + list name heading */}
-            <div className="relative mb-6 flex items-center">
+            <div className="relative mb-6 flex items-center min-h-[40px]">
               <button
                 aria-label="Back to shopping lists"
                 className="absolute left-0 flex items-center p-1 text-[#333]"
@@ -2014,7 +2017,7 @@ function App() {
                   <path d="M12 4L6 10l6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
-              <div className="w-full text-center text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]">
+              <div className="font-waitrose-display w-full text-center text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]">
                 {listName || 'LIST NAME'}
               </div>
             </div>
