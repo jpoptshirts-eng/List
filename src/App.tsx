@@ -7,7 +7,6 @@ import { getShopListLinesFromUserInput, isLikelyMealLine, isLikelyUiPlaceholderL
 import {
   SHOP_LIST_HELPER_INITIAL,
 } from './lib/shopInputCopy'
-import { startSpeechRecording, type SpeechRecordingHandle } from './lib/speechToText'
 import { loadCatalogForBuildShop, type WaitroseCatalogItem } from './lib/waitroseCatalog'
 
 type DietOption = 'Vegetarian' | 'Vegan' | 'Gluten free' | 'Pescatarian'
@@ -140,91 +139,6 @@ function toTitleCase(value: string): string {
  *
  * Returns a newline-joined string suitable for setInputValue.
  */
-// STT-specific corrections for words that Google Cloud Speech-to-Text commonly
-// mishears when recording grocery lists in a kitchen/home environment.
-const SPEECH_ALIAS_REWRITES: Array<{ pattern: RegExp; replacement: string }> = [
-  { pattern: /\btrigger\b/i,  replacement: 'sugar' },   // "sugar" misheard as "trigger"
-  { pattern: /\bflower\b/i,   replacement: 'flour' },   // homophones
-  { pattern: /\bmeals?\b/i,   replacement: 'milk' },    // "milk" misheard
-  { pattern: /\brice cake\b/i, replacement: 'rice cakes' },
-]
-
-// Single standalone words that are unambiguously individual grocery items.
-// Used to split adjacent words when STT returns them without punctuation.
-const SOLO_GROCERY_WORDS = new Set([
-  'bread','milk','eggs','egg','butter','sugar','flour','rice','pasta','tea','coffee',
-  'juice','oil','salt','pepper','water','cream','cheese','yogurt','yoghurt','honey',
-  'jam','sauce','vinegar','mustard','ketchup','mayo','mayonnaise','syrup','cocoa',
-  'oats','cereal','biscuits','biscuit','crackers','cracker','crisps','crisp',
-  'chicken','beef','lamb','pork','bacon','ham','salmon','tuna','prawns','prawn',
-  'carrot','carrots','onion','onions','potato','potatoes','tomato','tomatoes',
-  'garlic','ginger','lemon','lemons','lime','limes','apple','apples','banana',
-  'bananas','grapes','strawberries','strawberry','blueberries','blueberry',
-  'avocado','avocados','spinach','broccoli','lettuce','cucumber','courgette',
-  'mushroom','mushrooms','asparagus','celery','leek','leeks','parsnip','parsnips',
-  'beer','wine','gin','vodka','whisky','cider','lager',
-  'nappies','wipes','soap','shampoo','toothpaste','washing',
-])
-
-function parseSpeechTranscript(transcript: string): string {
-  if (!transcript.trim()) return ''
-
-  // Splits that reliably separate distinct items in spoken output.
-  const rawFragments = transcript
-    .split(/[,;.\n!?]+|\s+and\s+|\s+also\s+/i)
-    .map((s) => s.trim())
-    .filter(Boolean)
-
-  // Expand any fragment that looks like two solo items run together
-  // (e.g. "water milk" → ["water", "milk"]) without splitting genuine
-  // multi-word names (e.g. "organic milk", "green thai curry").
-  const fragments: string[] = []
-  for (const frag of rawFragments) {
-    const words = frag.split(/\s+/)
-    if (words.length === 2
-      && SOLO_GROCERY_WORDS.has(words[0].toLowerCase())
-      && SOLO_GROCERY_WORDS.has(words[1].toLowerCase())) {
-      fragments.push(words[0], words[1])
-    } else {
-      fragments.push(frag)
-    }
-  }
-
-  // Leading conversational fillers the speaker says before or between items.
-  const FILLER_PREFIX =
-    /^(i\s+(need|want|would like|got|have|should get|should add|also need|also want)|please\s+add|add\s+to\s+(my\s+)?list|get\s+me|buy|we\s+need|can\s+you\s+add|don'?t\s+forget)\s+/i
-  // Articles / quantifiers that don't form part of the product name.
-  const FILLER_LEAD =
-    /^(a|an|the|some|more|any|few|couple\s+of|packet\s+of|piece\s+of|bag\s+of|box\s+of|pack\s+of|jar\s+of|tin\s+of|can\s+of|bottle\s+of|carton\s+of|loaf\s+of)\s+/i
-
-  const seen = new Set<string>()
-  const items: string[] = []
-
-  for (let fragment of fragments) {
-    fragment = fragment.replace(FILLER_PREFIX, '').replace(FILLER_LEAD, '').trim()
-    if (!fragment || fragment.length < 2) continue
-    if (!/[a-zA-Z]/.test(fragment)) continue
-
-    const cleaned = fragment.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-    if (!cleaned) continue
-
-    // Apply speech-specific alias rewrites first, then shared OCR rewrites.
-    let finalItem = toTitleCase(cleaned)
-    for (const rule of [...SPEECH_ALIAS_REWRITES, ...OCR_ALIAS_REWRITES]) {
-      if (rule.pattern.test(cleaned)) {
-        finalItem = toTitleCase(rule.replacement)
-        break
-      }
-    }
-
-    const key = finalItem.toLowerCase()
-    if (seen.has(key) || key.length < 2) continue
-    seen.add(key)
-    items.push(finalItem)
-  }
-
-  return items.join('\n')
-}
 
 function charBigrams(value: string): Set<string> {
   const s = value.replace(/\s+/g, ' ').trim()
@@ -1107,92 +1021,6 @@ function IconUploadImage() {
   )
 }
 
-/** Icons/Small/Voice — matches Figma node 17778:11126 */
-function IconMic() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect x="6.25" y="2.75" width="3.5" height="5.75" rx="1.75" stroke="#333" strokeWidth="1" />
-      <path d="M4.25 7.85a3.75 3.1 0 007.5 0" stroke="#333" strokeWidth="1" strokeLinecap="round" />
-      <path d="M8 10.9v2.05" stroke="#333" strokeWidth="1" strokeLinecap="round" />
-      <path d="M5.85 13h4.3" stroke="#333" strokeWidth="1" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-/**
- * Equaliser bars that react to live microphone audio via an AnalyserNode.
- * Falls back to a gentle CSS pulse when no analyser is provided (e.g. during
- * the "Transcribing…" phase or the Web Speech API fallback path).
- */
-function ReactiveEqualizer({ analyser }: { analyser: AnalyserNode | null }) {
-  const b1 = useRef<SVGRectElement>(null)
-  const b2 = useRef<SVGRectElement>(null)
-  const b3 = useRef<SVGRectElement>(null)
-  const b4 = useRef<SVGRectElement>(null)
-
-  useEffect(() => {
-    if (!analyser) return
-
-    // Capture in a stable variable for the animation tick closure.
-    const a = analyser
-    // Using `a` avoids TS18047 complaints about `analyser` potentially being null.
-    a.fftSize = 512
-    const N = a.frequencyBinCount // 256 bins
-    const data = new Uint8Array(N)
-    const bars = [b1, b2, b3, b4]
-
-    // Four speech-frequency bands (skip bin 0 = DC offset):
-    //  B1 ~86–860 Hz  (fundamental pitch / low vowels)
-    //  B2 ~860–2150 Hz (first formant)
-    //  B3 ~2150–5160 Hz (second formant / sibilants)
-    //  B4 ~5160–8600 Hz (high consonants / breath)
-    const BANDS = [[1, 10], [10, 25], [25, 60], [60, 100]] as const
-    const MIN_H = 2
-    const MAX_H = 12
-
-    let raf = 0
-    function tick() {
-      a.getByteFrequencyData(data)
-      bars.forEach((ref, i) => {
-        const el = ref.current
-        if (!el) return
-        const [lo, hi] = BANDS[i]
-        let sum = 0
-        for (let j = lo; j < hi; j++) sum += data[j]
-        const level = sum / ((hi - lo) * 255) // 0–1
-        const h = Math.round(MIN_H + level * (MAX_H - MIN_H))
-        el.setAttribute('height', String(h))
-        el.setAttribute('y', String(15 - h))
-      })
-      raf = requestAnimationFrame(tick)
-    }
-
-    tick()
-    return () => cancelAnimationFrame(raf)
-  }, [analyser])
-
-  // CSS fallback: div bars with height animation (much more reliable than SVG scaleY)
-  if (!analyser) {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'flex-end', gap: '2px', width: '16px', height: '16px', paddingBottom: '1px' }}>
-        <style>{`@keyframes eqbar{0%,100%{height:3px}50%{height:13px}}`}</style>
-        <span style={{ width: '3px', background: '#53565A', borderRadius: '1px', height: '3px', display: 'block', animation: 'eqbar 0.7s ease-in-out infinite 0s' }} />
-        <span style={{ width: '3px', background: '#53565A', borderRadius: '1px', height: '3px', display: 'block', animation: 'eqbar 0.7s ease-in-out infinite 0.12s' }} />
-        <span style={{ width: '3px', background: '#53565A', borderRadius: '1px', height: '3px', display: 'block', animation: 'eqbar 0.7s ease-in-out infinite 0.24s' }} />
-        <span style={{ width: '3px', background: '#53565A', borderRadius: '1px', height: '3px', display: 'block', animation: 'eqbar 0.7s ease-in-out infinite 0.08s' }} />
-      </span>
-    )
-  }
-
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect ref={b1} x="1"    y="13" width="2.5" height="2" rx="1" fill="#53565A" />
-      <rect ref={b2} x="4.5"  y="13" width="2.5" height="2" rx="1" fill="#53565A" />
-      <rect ref={b3} x="8"    y="13" width="2.5" height="2" rx="1" fill="#53565A" />
-      <rect ref={b4} x="11.5" y="13" width="2.5" height="2" rx="1" fill="#53565A" />
-    </svg>
-  )
-}
 
 /** Icons/Small/Entertaining (cloche) — matches Figma node 17778:11127 */
 function IconPreferences() {
@@ -1238,7 +1066,6 @@ function App() {
   }
   const [inputFocused, setInputFocused] = useState(false)
   const [uploadedFileName, setUploadedFileName] = useState('')
-  const [isListening, setIsListening] = useState(false)
   const [showPreferences, setShowPreferences] = useState(false)
   const [toast, setToast] = useState('')
   const [showMoreEssentials, setShowMoreEssentials] = useState(false)
@@ -1269,14 +1096,6 @@ function App() {
   const resultsFromChipRef = useRef(false)
   /** Lines last chosen from a chip (for Apply / preferences without typed list). */
   const chipSourceLinesRef = useRef<string[]>([])
-  /** Handle returned by startSpeechRecording — lets us stop recording and get the transcript. */
-  const speechRecordingHandleRef = useRef<SpeechRecordingHandle | null>(null)
-  /** AudioContext created when recording starts; closed on stop. */
-  const audioCtxRef = useRef<AudioContext | null>(null)
-  /** AnalyserNode from the live mic stream — drives the reactive equaliser. */
-  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null)
-  /** Textarea value captured just before recording starts, for clean merge on completion. */
-  const preRecordValueRef = useRef('')
   /** Bumps when list-building intent changes; stale async catalog work must not apply state. */
   const listBuildGenerationRef = useRef(0)
   /** Bumps per image upload so stale OCR results cannot overwrite newer uploads. */
@@ -1324,7 +1143,6 @@ function App() {
 
   useEffect(() => {
     if (!generated) return
-    if (isListening) return
     // Read the live textarea value to avoid a one-frame state lag
     // that can clear freshly built results.
     const lines = getShopListLinesFromUserInput(readListTextareaRaw())
@@ -1341,7 +1159,7 @@ function App() {
       setEssentials([])
       chipSourceLinesRef.current = []
     }
-  }, [inputValue, uploadedFileName, generated, isListening, mealGroups, essentials])
+  }, [inputValue, uploadedFileName, generated, mealGroups, essentials])
 
   useEffect(() => {
     if (!generated) return
@@ -1356,14 +1174,6 @@ function App() {
     resetUploadedFileSelection()
   }, [generated, imageProcessing, mealGroups, essentials, uploadedFileName])
 
-  useEffect(() => {
-    return () => {
-      speechRecordingHandleRef.current?.stop()
-      speechRecordingHandleRef.current = null
-      void audioCtxRef.current?.close()
-      audioCtxRef.current = null
-    }
-  }, [])
 
   const hasEnoughSignalsForPersonalisedChips =
     mealGroups.filter((m) => !m.removed).length + essentials.length >= 4 ||
@@ -1619,77 +1429,6 @@ function App() {
     setSwapTarget(null)
   }
 
-  function teardownAudio() {
-    setAnalyserNode(null)
-    void audioCtxRef.current?.close()
-    audioCtxRef.current = null
-  }
-
-  function handleMic() {
-    setListInputError('')
-    resultsFromChipRef.current = false
-
-    // ── Stop / Generate ───────────────────────────────────────────────────────
-    if (isListening) {
-      teardownAudio()
-      setIsListening(false)
-      speechRecordingHandleRef.current?.stop()
-      return
-    }
-
-    // ── Start ─────────────────────────────────────────────────────────────────
-    preRecordValueRef.current = listDraftRef.current
-    setIsListening(true)
-
-    void (async () => {
-      const handle = await startSpeechRecording()
-
-      if (!handle) {
-        setIsListening(false)
-        setListInputError(
-          'Could not access the microphone. Check mic permissions and try again, or type your list instead.',
-        )
-        return
-      }
-
-      speechRecordingHandleRef.current = handle
-
-      // Wire the mic stream to an AnalyserNode so the equaliser reacts to voice.
-      if (handle.stream) {
-        try {
-          const ctx = new AudioContext()
-          const analyser = ctx.createAnalyser()
-          ctx.createMediaStreamSource(handle.stream).connect(analyser)
-          audioCtxRef.current = ctx
-          setAnalyserNode(analyser)
-        } catch {
-          // AudioContext unavailable — equaliser falls back to CSS pulse
-        }
-      }
-
-      // Await the transcript — resolves when the user clicks Generate.
-      const sttResult = await handle.result
-      speechRecordingHandleRef.current = null
-
-      if (!sttResult.ok || !sttResult.text.trim()) {
-        setListInputError(
-          sttResult.error
-            ? `Speech recognition error: ${sttResult.error}. Try again or type your list.`
-            : 'Nothing was heard — please try the mic again or type your list.',
-        )
-        return
-      }
-
-      resultsFromChipRef.current = false
-      const parsed = parseSpeechTranscript(sttResult.text)
-      const lines = getShopListLinesFromUserInput(parsed)
-      const extracted = (lines.length > 0 ? lines : [sttResult.text]).join('\n')
-      setInputValue(() => {
-        const base = preRecordValueRef.current.trim()
-        return base ? `${base}\n${extracted}` : extracted
-      })
-    })()
-  }
 
   function handleUploadFile(file?: File) {
     if (!file) return
@@ -2167,34 +1906,6 @@ function App() {
                   )}
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadFile(e.target.files?.[0])} />
-                <button
-                  type="button"
-                  className={`flex h-[28px] items-center justify-start gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333] ${isListening ? 'min-w-[140px]' : 'min-w-0 w-auto'}`}
-                  onClick={handleMic}
-                  aria-label={isListening ? 'Stop recording' : 'Speak your shopping list with the mic'}
-                >
-                  <span className="shrink-0">
-                    {isListening ? <ReactiveEqualizer analyser={analyserNode} /> : <IconMic />}
-                  </span>
-                  {isListening ? (
-                    <>
-                      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-left">Generate</span>
-                      <span
-                        role="button"
-                        aria-label="Generate list from speech"
-                        className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center text-[14px] leading-none"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleMic()
-                        }}
-                      >
-                        ×
-                      </span>
-                    </>
-                  ) : (
-                    <span className="whitespace-nowrap">Mic</span>
-                  )}
-                </button>
                 <button
                   type="button"
                   className="flex h-[28px] items-center gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333]"
