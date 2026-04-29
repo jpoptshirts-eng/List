@@ -1133,8 +1133,10 @@ function ReactiveEqualizer({ analyser }: { analyser: AnalyserNode | null }) {
   useEffect(() => {
     if (!analyser) return
 
-    analyser.fftSize = 512
-    const N = analyser.frequencyBinCount // 256 bins
+    // Capture in a stable variable for the animation tick closure.
+    const a = analyser
+    a.fftSize = 512
+    const N = a.frequencyBinCount // 256 bins
     const data = new Uint8Array(N)
     const bars = [b1, b2, b3, b4]
 
@@ -1149,7 +1151,7 @@ function ReactiveEqualizer({ analyser }: { analyser: AnalyserNode | null }) {
 
     let raf = 0
     function tick() {
-      analyser.getByteFrequencyData(data)
+      a.getByteFrequencyData(data)
       bars.forEach((ref, i) => {
         const el = ref.current
         if (!el) return
