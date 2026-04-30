@@ -93,7 +93,7 @@ function parseLinesFromOcrText(raw: string): string[] {
 // a fallback vocabulary; they only fire when a line actually matches.
 const OCR_ALIAS_REWRITES: Array<{ pattern: RegExp; replacement: string }> = [
   { pattern: /\boj\b|\bo\.?j\.?\b/i, replacement: 'orange juice' },
-  { pattern: /\bspag\s*bol\b|\bspag\b/i, replacement: 'spaghetti bolognese' },
+  { pattern: /\bsp[aeo]g[\s.\-]*bol|\bsp[aeo]g\b|\bbolognese\b|\bbolog\b/i, replacement: 'spaghetti bolognese' },
   // Sourdough — includes Vision API transpositions like "sougrdough"
   { pattern: /\b(sourdough|sougrdough|sovennoagu|sourdoag|sourdou)\b/i, replacement: 'sourdough bread' },
   { pattern: /\bsoven.*bae?r|sour.*br[e3]a?d/i, replacement: 'sourdough bread' },
@@ -215,7 +215,7 @@ const OCR_INTENT_PATTERNS: Array<{ intent: string; pattern: RegExp }> = [
   { intent: 'orange juice', pattern: /\b(oj|o\.j\.|orange).*(juice|jce)?\b/i },
   { intent: 'tomatoes', pattern: /\b(tomato|tomatoes|tomh?to|tomhto|tomat|tomhro|tomhrogy|toma?toe?s?)\b/i },
   { intent: 'onions', pattern: /\b(onion|onions|onio|ono)\b/i },
-  { intent: 'spaghetti bolognese', pattern: /\b(spag|spaghetti|jpag|speg).*(bol|bolog|be|bo[li])\b/i },
+  { intent: 'spaghetti bolognese', pattern: /\b(sp[aeo]g|spaghetti|jpag).*(bol|bolog|be|bo[li])\b|\bbolognese\b|\bbolog\b/i },
   { intent: 'green thai curry', pattern: /\b(green|grae|gacen).*(thai|tuy|try).*(curry|cur|liney|ciny)\b/i },
 ]
 
@@ -852,7 +852,25 @@ function buildShopFromListLines(
       essentials.push(resolved.item)
     }
   }
-  return { meals, essentials, fallbackMatches }
+  // Deduplicate within this build before merging into existing state.
+  // Two input lines resolving to the same catalog product should not create
+  // two separate rows — sum their quantities instead.
+  const dedupedEssentials = Array.from(
+    essentials
+      .reduce((map, item) => {
+        const key = normKey(item.name)
+        const existing = map.get(key)
+        if (existing) {
+          map.set(key, { ...existing, qty: existing.qty + item.qty })
+        } else {
+          map.set(key, item)
+        }
+        return map
+      }, new Map<string, Essential>())
+      .values(),
+  )
+
+  return { meals, essentials: dedupedEssentials, fallbackMatches }
 }
 
 function builtShopHasRows(built: { meals: MealGroup[]; essentials: Essential[] }): boolean {
@@ -864,21 +882,43 @@ function formatCurrency(value: number) {
 }
 
 function normKey(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, ' ').trim()
+  return value
+    .normalize('NFKC')          // decompose ligatures, fullwidth chars, etc.
+    .toLowerCase()
+    .replace(/[\u00A0\u200B\u202F\u2060\uFEFF]/g, ' ')  // non-breaking / zero-width spaces → space
+    .replace(/[''‚‛]/g, "'")    // curly / fancy apostrophes → straight
+    .replace(/[""„‟]/g, '"')    // curly quotes → straight
+    .replace(/[–—‒]/g, '-')     // en/em/figure dashes → hyphen
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function mergeEssentials(existing: Essential[], incoming: Essential[]): Essential[] {
   if (incoming.length === 0) return existing
-  const byName = new Map(existing.map((item) => [normKey(item.name), item]))
+
+  // Build a map from the existing list. If `existing` itself somehow contains
+  // duplicates (e.g. from a previous stale state), consolidate them now so
+  // the output is always clean. Use normKey so Unicode/whitespace variants of
+  // the same product name collapse to one entry.
+  const byName = new Map<string, Essential>()
+  for (const item of existing) {
+    const key = normKey(item.name)
+    const prev = byName.get(key)
+    byName.set(key, prev ? { ...prev, qty: prev.qty + item.qty } : item)
+  }
+
   for (const next of incoming) {
     const key = normKey(next.name)
     const prev = byName.get(key)
     if (prev) {
+      // Same catalog product → accumulate quantity.
       byName.set(key, { ...prev, qty: prev.qty + next.qty })
     } else {
+      // Different product (e.g. regular vs organic banana) → new row.
       byName.set(key, next)
     }
   }
+
   return Array.from(byName.values())
 }
 
@@ -1028,22 +1068,10 @@ function IconUploadImage() {
 function IconPreferences() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M5.2 2.4c.32.42.32.78 0 1.15M7.85 2c.32.38.32.72 0 1.05"
-        stroke="#333"
-        strokeWidth="0.95"
-        strokeLinecap="round"
-      />
-      <path d="M8 5.15V3.35" stroke="#333" strokeWidth="1" strokeLinecap="round" />
-      <circle cx="8" cy="3.1" r="0.55" fill="#333" />
-      <path
-        d="M3.75 12V10.25C3.75 7.2 5.65 5.15 8 5.15s4.25 2.05 4.25 5.1V12"
-        stroke="#333"
-        strokeWidth="1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M2.25 12.25h11.5" stroke="#333" strokeWidth="1" strokeLinecap="round" />
+      {/* Filter funnel — three lines decreasing in length */}
+      <line x1="2"   y1="4"  x2="14"  y2="4"  stroke="#333" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="4"   y1="8"  x2="12"  y2="8"  stroke="#333" strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="6.5" y1="12" x2="9.5" y2="12" stroke="#333" strokeWidth="1.3" strokeLinecap="round" />
     </svg>
   )
 }
@@ -1095,6 +1123,26 @@ function App() {
   const [appView, setAppView] = useState<AppView>('index')
   const [listName, setListName] = useState('')
   const [newListNameInput, setNewListNameInput] = useState('')
+  const [activeNavTab, setActiveNavTab] = useState<string>('Shopping lists')
+  const navCarouselRef = useRef<HTMLDivElement | null>(null)
+  const [navChevrons, setNavChevrons] = useState<{ left: boolean; right: boolean }>({ left: false, right: true })
+  const [showAutoSaveBanner, setShowAutoSaveBanner] = useState<boolean>(
+    () => localStorage.getItem('wtr-autosave-banner-dismissed') !== '1',
+  )
+
+  useEffect(() => {
+    const checkChevrons = () => {
+      const c = navCarouselRef.current
+      if (!c) return
+      setNavChevrons({
+        left: c.scrollLeft > 4,
+        right: c.scrollLeft < c.scrollWidth - c.clientWidth - 4,
+      })
+    }
+    checkChevrons()
+    window.addEventListener('resize', checkChevrons)
+    return () => window.removeEventListener('resize', checkChevrons)
+  }, [])
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const listInputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -1514,12 +1562,16 @@ function App() {
             visionLines.push(finalLine)
           }
 
-          // Full-text scan for short abbreviations (e.g. "OJ") that Vision may
+          // Full-text scan for short abbreviations (e.g. "OJ", "Spag Bol") that Vision may
           // include within a larger text block rather than on their own line.
           const rawVisionLower = visionResult.text.toLowerCase().replace(/[^a-z0-9.\s]/g, ' ')
           if (/\boj\b|\bo\.j\.\b/i.test(rawVisionLower) && !visionSeen.has('orange juice')) {
             visionSeen.add('orange juice')
             visionLines.push('Orange Juice')
+          }
+          if (/\bsp[aeo]g[\s.\-]*bol|\bsp[aeo]g\b|\bbolognese\b|\bbolog\b/i.test(rawVisionLower) && !visionSeen.has('spaghetti bolognese')) {
+            visionSeen.add('spaghetti bolognese')
+            visionLines.push('Spaghetti Bolognese')
           }
 
           console.log('[OCR] Vision parsed lines:', visionLines)
@@ -1861,17 +1913,76 @@ function App() {
         </div>
         <div className="bg-[#C4D600] py-2 text-center text-[16px] font-normal text-[#154734]">New lower prices on even more everyday items | <u>Shop now</u></div>
         {appView === 'index' ? (
-          <div className="flex items-center justify-center border-b border-[#ddd]">
-            <div className="flex items-center">
+          <div className="border-b border-[#ddd] relative lg:flex lg:justify-center">
+            {/* Left chevron — shown when scrolled right */}
+            {navChevrons.left && (
+              <button
+                aria-label="Scroll tabs left"
+                onClick={() => {
+                  const c = navCarouselRef.current
+                  if (c) c.scrollBy({ left: -160, behavior: 'smooth' })
+                }}
+                className="lg:hidden absolute left-0 top-0 z-10 flex h-full items-center pl-[4px] pr-[44px]"
+                style={{ background: 'linear-gradient(to right, #fff 30%, rgba(255,255,255,0))' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M7.5 2.5 3.5 6l4 3.5" stroke="#333" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+
+            {/* Scrollable tab row */}
+            <div
+              ref={navCarouselRef}
+              onScroll={() => {
+                const c = navCarouselRef.current
+                if (!c) return
+                setNavChevrons({
+                  left: c.scrollLeft > 4,
+                  right: c.scrollLeft < c.scrollWidth - c.clientWidth - 4,
+                })
+              }}
+              className="flex overflow-x-auto scroll-smooth lg:justify-center [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            >
               {(['Favourites', 'Previous orders', 'Quick Shop', 'Bought in-store', 'Shopping lists'] as const).map((tab) => (
-                <div
+                <button
                   key={tab}
-                  className={`flex h-[52px] items-center justify-center px-3 text-[16px] ${tab === 'Shopping lists' ? 'border-b-2 border-[#333]' : 'border-b-2 border-[#ddd]'}`}
+                  onClick={() => {
+                    setActiveNavTab(tab)
+                    const container = navCarouselRef.current
+                    const btn = container?.querySelector(`[data-nav-tab="${tab}"]`) as HTMLElement | null
+                    if (container && btn) {
+                      container.scrollTo({ left: btn.offsetLeft - 16, behavior: 'smooth' })
+                    }
+                  }}
+                  data-nav-tab={tab}
+                  className={`flex-shrink-0 flex h-[52px] items-center justify-center px-4 text-[16px] whitespace-nowrap transition-colors ${
+                    activeNavTab === tab
+                      ? 'border-b-2 border-[#333] text-[#333]'
+                      : 'border-b-2 border-transparent text-[#555] hover:border-[#bbb]'
+                  }`}
                 >
                   {tab}
-                </div>
+                </button>
               ))}
             </div>
+
+            {/* Right chevron — shown when more tabs are off-screen to the right */}
+            {navChevrons.right && (
+              <button
+                aria-label="Scroll tabs right"
+                onClick={() => {
+                  const c = navCarouselRef.current
+                  if (c) c.scrollBy({ left: 160, behavior: 'smooth' })
+                }}
+                className="lg:hidden absolute right-0 top-0 z-10 flex h-full items-center pl-[44px] pr-[4px]"
+                style={{ background: 'linear-gradient(to left, #fff 30%, rgba(255,255,255,0))' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M4.5 2.5 8.5 6l-4 3.5" stroke="#333" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-[1260px] gap-2 border-t border-[#ddd] px-4 py-3 text-[14px]">
@@ -1888,8 +1999,11 @@ function App() {
         {/* ── INDEX VIEW ── */}
         {appView === 'index' && (
           <>
-            <div className="mb-6 text-center text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]">
-              SHOPPING LISTS
+            <div
+              className="mb-6 text-center uppercase text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]"
+              style={{ fontFamily: '"Gill Sans Nova for JL","Gill Sans","Gill Sans MT",Calibri,"Trebuchet MS",sans-serif', fontWeight: 500, fontStyle: 'normal' }}
+            >
+              Shopping Lists
             </div>
             <div className="mx-auto flex w-full max-w-[768px] flex-col gap-10 sm:flex-row sm:items-start sm:gap-10">
               {/* Create a list tile */}
@@ -2017,10 +2131,51 @@ function App() {
                   <path d="M12 4L6 10l6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
-              <div className="font-waitrose-display w-full text-center text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]">
+              <div
+                className="w-full text-center uppercase text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]"
+                style={{ fontFamily: '"Gill Sans Nova for JL","Gill Sans","Gill Sans MT",Calibri,"Trebuchet MS",sans-serif', fontWeight: 500, fontStyle: 'normal' }}
+              >
                 {listName || 'LIST NAME'}
               </div>
             </div>
+
+            {/* Auto-save info banner — shown once per user until dismissed */}
+            {showAutoSaveBanner && (
+              <div className="mx-auto mb-4 w-full max-w-[768px] flex items-stretch bg-[#e5f1fc]">
+                {/* Blue left accent bar */}
+                <div className="w-[4px] shrink-0 bg-[#0074e8]" />
+                {/* Content */}
+                <div className="flex flex-1 items-center gap-4 px-4 py-[10px]">
+                  {/* Info icon */}
+                  <span className="shrink-0" aria-hidden="true">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                      <circle cx="16" cy="16" r="14" stroke="#0074e8" strokeWidth="2" />
+                      <path d="M16 14v8" stroke="#0074e8" strokeWidth="2" strokeLinecap="round" />
+                      <circle cx="16" cy="10.5" r="1.25" fill="#0074e8" />
+                    </svg>
+                  </span>
+                  {/* Message */}
+                  <p className="flex-1 text-[16px] leading-6 text-[#333]">
+                    Lists are automatically saved when meals/items are generated
+                  </p>
+                  {/* Dismiss */}
+                  <button
+                    type="button"
+                    aria-label="Dismiss"
+                    className="shrink-0 flex items-center justify-center p-1 text-[#333]"
+                    onClick={() => {
+                      localStorage.setItem('wtr-autosave-banner-dismissed', '1')
+                      setShowAutoSaveBanner(false)
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
+
         <div className="mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4">
           <form
             className="block"
@@ -2105,7 +2260,7 @@ function App() {
                   <span className="shrink-0">
                     <IconPreferences />
                   </span>
-                  <span className="whitespace-nowrap">Shop preferences</span>
+                  <span className="whitespace-nowrap">Filter preferences</span>
                 </button>
               </div>
               <button
@@ -2305,50 +2460,131 @@ function App() {
       )}
 
       {showPreferences && (
-        <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/30 p-0 md:items-center md:p-4">
-          <div className="relative h-[92vh] w-full overflow-auto bg-[#fafafa] p-4 md:h-auto md:max-h-[90vh] md:max-w-[720px] md:border md:border-[#ddd]">
-            <button
-              className="absolute right-0 top-0 pr-[20px] pt-[20px] text-[#53565A]"
-              onClick={() => setShowPreferences(false)}
-              aria-label="Close"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
-            <h2 className="mb-6 text-center tracking-[3px] text-[#53565A]" style={{ fontSize: '20px' }}>SHOP PREFERENCES</h2>
-            <h3 className="mb-2 text-sm tracking-[3px] text-[#53565A]">DIET</h3>
-            <div className="mb-6 flex flex-wrap gap-2">
-              {(['Vegetarian', 'Vegan', 'Gluten free', 'Pescatarian'] as DietOption[]).map((option) => (
-                <button key={option} className={`rounded-full border px-3 py-1 ${dietSelections.includes(option) ? 'border-[#53565A] bg-[#53565A] text-white' : 'border-[#a9a9a9] bg-white'}`} onClick={() => toggleDiet(option)}>{option}</button>
-              ))}
+        <div
+          className="fixed inset-0 z-20 flex bg-black/30 sm:items-center sm:justify-center"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPreferences(false) }}
+        >
+          {/* Modal panel — full-screen on mobile, centred sheet on sm+ */}
+          <div className="flex h-full w-full flex-col bg-white sm:h-auto sm:min-h-[677px] sm:max-h-[90vh] sm:max-w-[544px]">
+
+            {/* ── Title bar ── */}
+            <div className="shrink-0 bg-white">
+              <div className="flex items-center gap-2 px-5 py-4">
+                {/* Invisible spacer keeps title truly centred */}
+                <span className="w-4 shrink-0" />
+                <p className="flex-1 text-center text-[16px] leading-6 text-[#333]">Preferences</p>
+                <button
+                  aria-label="Close"
+                  className="flex shrink-0 items-center justify-center text-[#333]"
+                  onClick={() => setShowPreferences(false)}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
+              <div className="border-t border-[#ddd]" />
             </div>
-            <h3 className="mb-2 text-sm tracking-[3px] text-[#53565A]">RANGE</h3>
-            <div className="mb-6 flex flex-wrap gap-2">
-              {(['No 1 Range', 'Essentials', 'Organic'] as RangeOption[]).map((option) => (
-                <button key={option} className={`rounded-full border px-3 py-1 ${rangeSelections.includes(option) ? 'border-[#53565A] bg-[#53565A] text-white' : 'border-[#a9a9a9] bg-white'}`} onClick={() => toggleRange(option)}>{option}</button>
-              ))}
+
+            {/* ── Scrollable content ── */}
+            <div className="flex flex-1 flex-col gap-10 overflow-y-auto bg-[#fafafa] px-4 py-6">
+              <p className="text-[16px] leading-6 text-[#333]">
+                Set your filters and start listing! We'll learn from your activity to automatically suggest the best matches for your household.
+              </p>
+
+              {/* Diet */}
+              <div className="flex flex-col gap-2">
+                <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Diet</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['Vegetarian', 'Vegan', 'Gluten free', 'Pescatarian'] as DietOption[]).map((option) => {
+                    const sel = dietSelections.includes(option)
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => toggleDiet(option)}
+                        className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
+                      >
+                        {option}
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                          {sel
+                            ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                            : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
+                          }
+                        </svg>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Range */}
+              <div className="flex flex-col gap-2">
+                <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Range</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['No 1 Range', 'Essentials', 'Organic'] as RangeOption[]).map((option) => {
+                    const sel = rangeSelections.includes(option)
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => toggleRange(option)}
+                        className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
+                      >
+                        {option}
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                          {sel
+                            ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                            : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
+                          }
+                        </svg>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Household */}
+              <div className="flex flex-col gap-2">
+                <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Household</p>
+                <div className="flex flex-wrap gap-2">
+                  {(['Serves 1', 'Serves 2', 'Serves 3', 'Serves 4', 'Serves 5', 'Serves 6+'] as HouseholdOption[]).map((option) => {
+                    const sel = household === option
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => setHousehold(option)}
+                        className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
+                      >
+                        {option}
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                          {sel
+                            ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                            : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
+                          }
+                        </svg>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
-            <h3 className="mb-2 text-sm tracking-[3px] text-[#53565A]">HOUSEHOLD</h3>
-            <div className="mb-6 flex flex-wrap gap-2">
-              {(['Serves 1', 'Serves 2', 'Serves 3', 'Serves 4', 'Serves 5', 'Serves 6+'] as HouseholdOption[]).map((option) => (
-                <button key={option} className={`rounded-full border px-3 py-1 ${household === option ? 'border-[#53565A] bg-[#53565A] text-white' : 'border-[#a9a9a9] bg-white'}`} onClick={() => setHousehold(option)}>{option}</button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                className="bg-[#eeeeee] px-4 py-2 text-center text-[#333]"
-                onClick={() => {
-                  setDietSelections([])
-                  setRangeSelections([])
-                  setHousehold(null)
-                }}
-              >
-                Clear
-              </button>
-              <button className="bg-[#53565A] px-4 py-2 text-center text-white" onClick={() => void applyPreferences()}>
-                Apply
-              </button>
+
+            {/* ── Footer CTAs ── */}
+            <div className="shrink-0 bg-white">
+              <div className="border-t border-[#ddd]" />
+              <div className="flex gap-5 p-5">
+                <button
+                  className="flex flex-1 items-center justify-center border border-[#333] px-5 py-2 text-[16px] leading-6 text-[#333]"
+                  onClick={() => { setDietSelections([]); setRangeSelections([]); setHousehold(null) }}
+                >
+                  Clear
+                </button>
+                <button
+                  className="flex flex-1 items-center justify-center bg-[#53565a] px-5 py-2 text-[16px] leading-6 text-white"
+                  onClick={() => void applyPreferences()}
+                >
+                  Apply
+                </button>
+              </div>
             </div>
           </div>
         </div>
