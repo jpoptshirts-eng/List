@@ -89,11 +89,33 @@ function parseLinesFromOcrText(raw: string): string[] {
 
 
 // Shorthand and common OCR-distortion corrections applied line-by-line.
+/**
+ * Google Vision sometimes returns Cyrillic characters when reading handwritten
+ * Latin text — e.g. handwritten "Spag Bol" → "Брад Bос" because:
+ *   S ≈ Б,  p ≈ р,  a ≈ а,  g ≈ д,  o ≈ о,  c ≈ с  (visual confusables)
+ * Map these back to their Latin lookalikes before ASCII-only cleaning so our
+ * alias patterns can still fire.
+ */
+function normaliseCyrillicConfusables(text: string): string {
+  return text
+    .replace(/\u0430/g, 'a').replace(/\u0435/g, 'e').replace(/\u043E/g, 'o')
+    .replace(/\u0440/g, 'p').replace(/\u0441/g, 'c').replace(/\u0445/g, 'x')
+    .replace(/\u0434/g, 'g').replace(/\u0431/g, 'b').replace(/\u0432/g, 'v')
+    .replace(/\u0410/g, 'A').replace(/\u0412/g, 'B').replace(/\u0415/g, 'E')
+    .replace(/\u041A/g, 'K').replace(/\u041C/g, 'M').replace(/\u041D/g, 'H')
+    .replace(/\u041E/g, 'O').replace(/\u0420/g, 'P').replace(/\u0421/g, 'C')
+    .replace(/\u0422/g, 'T').replace(/\u0425/g, 'X')
+    .replace(/\u0411/g, 'S')  // Б ≈ S  (handwriting confusable)
+    .replace(/\u0414/g, 'G')  // Д ≈ G
+}
+
 // These correct specific OCR mis-reads of known grocery terms — they are NOT
 // a fallback vocabulary; they only fire when a line actually matches.
 const OCR_ALIAS_REWRITES: Array<{ pattern: RegExp; replacement: string }> = [
   { pattern: /\boj\b|\bo\.?j\.?\b/i, replacement: 'orange juice' },
-  { pattern: /\bsp[aeo]g[\s.\-]*bol|\bsp[aeo]g\b|\bbolognese\b|\bbolog\b/i, replacement: 'spaghetti bolognese' },
+  // [sb]p[aeo]g covers both "spag" (normal) and "bpag" (Cyrillic В confusable — Vision reads
+  // handwritten S as В which normalises to B). b[oa][cl] covers "bol", "boc", "bal" etc.
+  { pattern: /\b[sb]p[aeo]g[\s.\-]*b[oa][cl]|\b[sb]p[aeo]g\b|\bbolognese\b|\bbolog\b|\bspaghetti\b/i, replacement: 'spaghetti bolognese' },
   // Sourdough — includes Vision API transpositions like "sougrdough"
   { pattern: /\b(sourdough|sougrdough|sovennoagu|sourdoag|sourdou)\b/i, replacement: 'sourdough bread' },
   { pattern: /\bsoven.*bae?r|sour.*br[e3]a?d/i, replacement: 'sourdough bread' },
@@ -1516,10 +1538,16 @@ function App() {
         if (visionResult.ok && visionResult.text.trim().length > 0) {
           console.log('[OCR] Google Vision result:', visionResult.text)
 
+          // Normalise any Cyrillic confusables Vision returned for handwritten Latin text
+          const visionText = normaliseCyrillicConfusables(visionResult.text)
+          if (visionText !== visionResult.text) {
+            console.log('[OCR] After Cyrillic normalisation:', visionText)
+          }
+
           const visionSeen = new Set<string>()
           const visionLines: string[] = []
 
-          for (const raw of visionResult.text.split('\n')) {
+          for (const raw of visionText.split('\n')) {
             // Skip standalone quantity lines like "× 54" or "x 100,000" written
             // below an item (common in handwritten lists with footnote-style quantities).
             // The item name is already captured from the line above; qty can be set manually.
@@ -1564,12 +1592,22 @@ function App() {
 
           // Full-text scan for short abbreviations (e.g. "OJ", "Spag Bol") that Vision may
           // include within a larger text block rather than on their own line.
-          const rawVisionLower = visionResult.text.toLowerCase().replace(/[^a-z0-9.\s]/g, ' ')
+          const rawVisionLower = visionText.toLowerCase().replace(/[^a-z0-9.\s]/g, ' ')
           if (/\boj\b|\bo\.j\.\b/i.test(rawVisionLower) && !visionSeen.has('orange juice')) {
             visionSeen.add('orange juice')
             visionLines.push('Orange Juice')
           }
-          if (/\bsp[aeo]g[\s.\-]*bol|\bsp[aeo]g\b|\bbolognese\b|\bbolog\b/i.test(rawVisionLower) && !visionSeen.has('spaghetti bolognese')) {
+          // "Spag Bol" scan — covers:
+          //   sp[aeo]g + optional space/dot/hyphen + bol  →  "Spag Bol", "Spag-Bol"
+          //   sp[aeo]g alone                              →  "Spag" on its own (bol was on next line)
+          //   bolognese or bolog                          →  Vision returned the full/partial word
+          //   spaghetti alone                             →  Vision returned full word without "bolognese"
+          //   spag? bol  (with optional character noise)  →  "Sp@g bol", "Spg bol"
+          if (
+            /\b[sb]p[aeo]g[\s.\-]*b[oa][cl]|\b[sb]p[aeo]g\b|\bbolognese\b|\bbolog\b|\bspaghetti\b/i
+              .test(rawVisionLower) &&
+            !visionSeen.has('spaghetti bolognese')
+          ) {
             visionSeen.add('spaghetti bolognese')
             visionLines.push('Spaghetti Bolognese')
           }
@@ -2156,7 +2194,7 @@ function App() {
                   </span>
                   {/* Message */}
                   <p className="flex-1 text-[16px] leading-6 text-[#333]">
-                    Lists are automatically saved when meals/items are generated
+                    Lists are automatically saved every time meals/items are generated
                   </p>
                   {/* Dismiss */}
                   <button

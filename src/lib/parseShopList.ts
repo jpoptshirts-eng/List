@@ -91,6 +91,7 @@ export function getShopListLinesFromUserInput(text: string): string[] {
 
 const MEAL_HINTS = [
   'spag',
+  'bpag', // Cyrillic-confusable variant of 'spag' (В normalises to B)
   'bolognese',
   'curry',
   'shepherd',
