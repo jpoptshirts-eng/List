@@ -44,6 +44,14 @@ type Essential = {
   image: string
 }
 
+type SavedList = {
+  id: string
+  name: string
+  mealGroups: MealGroup[]
+  essentials: Essential[]
+  generated: boolean
+}
+
 type SwapItem = { name: string; image: string; price: number; unitPrice: string }
 type SwapTarget =
   | { kind: 'meal'; mealId: string; ingredientId: string; item: SwapItem }
@@ -1143,6 +1151,8 @@ function App() {
   const [essentials, setEssentials] = useState<Essential[]>([])
 
   const [appView, setAppView] = useState<AppView>('index')
+  const [savedLists, setSavedLists] = useState<SavedList[]>([])
+  const [activeListId, setActiveListId] = useState<string | null>(null)
   const [listName, setListName] = useState('')
   const [newListNameInput, setNewListNameInput] = useState('')
   const [activeNavTab, setActiveNavTab] = useState<string>('Shopping lists')
@@ -1425,9 +1435,21 @@ function App() {
         return
       }
 
+      const newMealGroups = mergeMealGroups(mealGroups, built.meals)
+      const newEssentials = mergeEssentials(essentials, built.essentials)
       setGenerated(true)
-      setMealGroups((prev) => mergeMealGroups(prev, built.meals))
-      setEssentials((prev) => mergeEssentials(prev, built.essentials))
+      setMealGroups(newMealGroups)
+      setEssentials(newEssentials)
+      // Auto-save to the active list entry
+      if (activeListId) {
+        setSavedLists((prev) =>
+          prev.map((l) =>
+            l.id === activeListId
+              ? { ...l, mealGroups: newMealGroups, essentials: newEssentials, generated: true }
+              : l,
+          ),
+        )
+      }
       // Clear entered list so the post-build helper prompt is visible.
       setInputValue('')
       resetUploadedFileSelection()
@@ -1850,31 +1872,64 @@ function App() {
     })()
   }
 
-  // Derived values for the index list tile
-  const activeMealGroups = mealGroups.filter((m) => !m.removed)
-  const listPreviewImages = [
-    ...activeMealGroups.flatMap((m) => m.ingredients).map((i) => i.image),
-    ...essentials.map((e) => e.image),
-  ].filter(Boolean).slice(0, 4)
-  const listMealCount = activeMealGroups.length
-  const listItemCount = activeMealGroups.reduce((s, m) => s + m.ingredients.length, 0) + essentials.length
-  const listMetaLine = listName
-    ? listMealCount > 0
-      ? `${listMealCount} meal${listMealCount === 1 ? '' : 's'}, ${listItemCount} item${listItemCount === 1 ? '' : 's'}`
-      : `${listItemCount} item${listItemCount === 1 ? '' : 's'}`
-    : ''
-  const hasExistingList = !!listName
+  // Per-list derived values are computed inline when rendering each list card
 
   function createNewList() {
     const name = newListNameInput.trim()
     if (!name) return
-    setListName(name)
+    const newList: SavedList = {
+      id: crypto.randomUUID(),
+      name,
+      mealGroups: [],
+      essentials: [],
+      generated: false,
+    }
+    setSavedLists((prev) => [...prev, newList])
     setNewListNameInput('')
-    setMealGroups([])
-    setEssentials([])
-    setGenerated(false)
+    // Stay on index — user clicks the card to open it
+  }
+
+  function openList(list: SavedList) {
+    // Auto-save the currently open list before switching
+    if (activeListId) {
+      setSavedLists((prev) =>
+        prev.map((l) =>
+          l.id === activeListId ? { ...l, mealGroups, essentials, generated } : l,
+        ),
+      )
+    }
+    setActiveListId(list.id)
+    setListName(list.name)
+    setMealGroups(list.mealGroups)
+    setEssentials(list.essentials)
+    setGenerated(list.generated)
+    setShowMoreEssentials(false)
     setInputValue('')
+    setListInputError('')
     setAppView('build')
+  }
+
+  function goToIndex() {
+    // Auto-save current build state before leaving
+    if (activeListId) {
+      setSavedLists((prev) =>
+        prev.map((l) =>
+          l.id === activeListId ? { ...l, mealGroups, essentials, generated } : l,
+        ),
+      )
+    }
+    setAppView('index')
+  }
+
+  function deleteList(id: string) {
+    setSavedLists((prev) => prev.filter((l) => l.id !== id))
+    if (activeListId === id) {
+      setActiveListId(null)
+      setListName('')
+      setMealGroups([])
+      setEssentials([])
+      setGenerated(false)
+    }
   }
 
   return (
@@ -2024,9 +2079,9 @@ function App() {
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-[1260px] gap-2 border-t border-[#ddd] px-4 py-3 text-[14px]">
-            <button className="underline" onClick={() => setAppView('index')}>Home</button>
+            <button className="underline" onClick={goToIndex}>Home</button>
             <span>&gt;</span>
-            <button className="underline" onClick={() => setAppView('index')}>Shopping lists</button>
+            <button className="underline" onClick={goToIndex}>Shopping lists</button>
             <span>&gt;</span>
           </div>
         )}
@@ -2043,7 +2098,7 @@ function App() {
             >
               Shopping Lists
             </div>
-            <div className="mx-auto flex w-full max-w-[768px] flex-col gap-10 sm:flex-row sm:items-start sm:gap-10">
+            <div className="mx-auto flex w-full max-w-[768px] flex-wrap gap-6 items-start">
               {/* Create a list tile */}
               <div className="flex w-full shrink-0 items-center justify-center border border-dashed border-[#a9a9a9] bg-white p-6 sm:w-[343px] sm:min-h-[184px]">
                 <form
@@ -2076,81 +2131,74 @@ function App() {
                 </form>
               </div>
 
-              {/* Existing list tile */}
-              {hasExistingList && (
-                <div className="w-full bg-white shadow-[0px_2px_1px_rgba(0,0,0,0.02)] sm:flex-1">
-                  <div className="flex items-center justify-between border-b border-[#ddd] p-4">
-                    <div className="flex items-center gap-4 text-[16px]">
-                      <span className="font-medium">{listName}</span>
-                      <span className="font-light text-[#53565A]">{listMetaLine}</span>
-                    </div>
-                    <button
-                      aria-label="Delete list"
-                      className="text-[#757575]"
-                      onClick={() => { setListName(''); setMealGroups([]); setEssentials([]); setGenerated(false) }}
-                    >
-                      <IconBin />
-                    </button>
-                  </div>
-                  {listPreviewImages.length > 0 ? (
-                    <div className="flex items-center gap-0 px-4 py-4">
-                      {listPreviewImages.map((src, i) => (
-                        <button
-                          key={i}
-                          className="size-[70px] shrink-0 overflow-hidden bg-[#fafafa]"
-                          onClick={() => setAppView('build')}
-                          aria-label="Open list"
-                        >
-                          {/^https?:\/\//i.test(src) ? (
-                            <img src={src} alt="" className="size-full object-cover" loading="lazy" />
-                          ) : (
-                            <span className="flex size-full items-center justify-center text-[22px]">{src}</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-4">
+              {/* One card per saved list */}
+              {savedLists.map((list) => {
+                const activeMeals = list.mealGroups.filter((m) => !m.removed)
+                const previewImages = [
+                  ...activeMeals.flatMap((m) => m.ingredients).map((i) => i.image),
+                  ...list.essentials.map((e) => e.image),
+                ].filter(Boolean).slice(0, 4)
+                const mealCount = activeMeals.length
+                const itemCount =
+                  activeMeals.reduce((s, m) => s + m.ingredients.length, 0) +
+                  list.essentials.length
+                const metaLine =
+                  mealCount > 0
+                    ? `${mealCount} meal${mealCount === 1 ? '' : 's'}, ${itemCount} item${itemCount === 1 ? '' : 's'}`
+                    : `${itemCount} item${itemCount === 1 ? '' : 's'}`
+                return (
+                  <div key={list.id} className="w-full bg-white shadow-[0px_2px_1px_rgba(0,0,0,0.02)] sm:w-[343px]">
+                    <div className="flex items-center justify-between border-b border-[#ddd] p-4">
+                      <div className="flex min-w-0 items-center gap-4 text-[16px]">
+                        <span className="truncate font-medium">{list.name}</span>
+                        <span className="shrink-0 font-light text-[#53565A]">{metaLine}</span>
+                      </div>
                       <button
-                        className="text-[16px] font-medium underline"
-                        onClick={() => setAppView('build')}
+                        aria-label={`Delete ${list.name}`}
+                        className="ml-2 shrink-0 text-[#757575]"
+                        onClick={() => deleteList(list.id)}
                       >
-                        Start building your list
+                        <IconBin />
                       </button>
                     </div>
-                  )}
-                  <div className="flex justify-end px-4 pb-4">
-                    <button
-                      className="text-[16px] font-medium underline"
-                      onClick={() => setAppView('build')}
-                    >
-                      View
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {!hasExistingList && (
-                <div className="w-full bg-white shadow-[0px_2px_1px_rgba(0,0,0,0.02)] sm:flex-1">
-                  <div className="flex items-center justify-between border-b border-[#ddd] p-4">
-                    <div className="flex items-center gap-4 text-[16px]">
-                      <span className="font-medium">List name</span>
-                      <span className="font-light text-[#53565A]">0 items</span>
+                    {previewImages.length > 0 ? (
+                      <div className="flex items-center px-4 py-4">
+                        {previewImages.map((src, i) => (
+                          <button
+                            key={i}
+                            className="size-[70px] shrink-0 overflow-hidden bg-[#fafafa]"
+                            onClick={() => openList(list)}
+                            aria-label={`Open ${list.name}`}
+                          >
+                            {/^https?:\/\//i.test(src) ? (
+                              <img src={src} alt="" className="size-full object-cover" loading="lazy" />
+                            ) : (
+                              <span className="flex size-full items-center justify-center text-[22px]">{src}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-4">
+                        <button
+                          className="text-[16px] font-medium underline"
+                          onClick={() => openList(list)}
+                        >
+                          Start building your list
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex justify-end px-4 pb-4">
+                      <button
+                        className="text-[16px] font-medium underline"
+                        onClick={() => openList(list)}
+                      >
+                        View
+                      </button>
                     </div>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                      <path d="M3 4.5 6 7.5 9 4.5" stroke="#333" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
                   </div>
-                  <div className="px-4 py-4">
-                    <button
-                      className="text-[16px] font-medium underline text-[#333]"
-                      onClick={() => { if (!listName) setListName('My list'); setAppView('build') }}
-                    >
-                      Start building your list
-                    </button>
-                  </div>
-                </div>
-              )}
+                )
+              })}
             </div>
           </>
         )}
@@ -2163,7 +2211,7 @@ function App() {
               <button
                 aria-label="Back to shopping lists"
                 className="absolute left-0 flex items-center p-1 text-[#333]"
-                onClick={() => setAppView('index')}
+                onClick={goToIndex}
               >
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   <path d="M12 4L6 10l6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
