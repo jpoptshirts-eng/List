@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { recognize } from 'tesseract.js'
 import { EssentialProductPod, IconBin, IconChevronMeal, RecipeProductPod } from './components/shopping-list-pods'
 import { runVisionOcr } from './lib/visionOcr'
@@ -1050,6 +1050,28 @@ function IconTrolley({ color = '#333' }: { color?: string }) {
   )
 }
 
+/** Item-count badge on trolley icon — Waitrose green circle, white text (centred on icon). */
+function TrolleyIconWithBadge({ count, iconColor = '#333' }: { count: number; iconColor?: string }) {
+  const label = count > 99 ? '99+' : String(count)
+  const compactText = label.length >= 3
+  return (
+    <span className="relative inline-flex size-[22px] shrink-0 items-center justify-center">
+      <IconTrolley color={iconColor} />
+      {count > 0 ? (
+        <span
+          className={[
+            'pointer-events-none absolute left-1/2 top-1/2 z-10 flex size-[18px] shrink-0 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#5B8226] font-medium leading-none text-white tabular-nums shadow-none',
+            compactText ? 'text-[7px]' : 'text-[9px]',
+          ].join(' ')}
+          aria-hidden
+        >
+          {label}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 function IconMenu() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1130,6 +1152,8 @@ function App() {
   const [toast, setToast] = useState('')
   const [showMoreEssentials, setShowMoreEssentials] = useState(false)
   const [trolleyTotal, setTrolleyTotal] = useState(0)
+  const [trolleyItemCount, setTrolleyItemCount] = useState(0)
+  const [trolleySnackbar, setTrolleySnackbar] = useState('')
   const [swapTarget, setSwapTarget] = useState<SwapTarget | null>(null)
   const [swapAlts, setSwapAlts] = useState<WaitroseCatalogItem[]>([])
   const [swapAltsLoading, setSwapAltsLoading] = useState(false)
@@ -1187,6 +1211,9 @@ function App() {
   /** Bumps per image upload so stale OCR results cannot overwrite newer uploads. */
   const uploadGenerationRef = useRef(0)
 
+  const buildFooterRef = useRef<HTMLElement | null>(null)
+  const [buildFooterHeight, setBuildFooterHeight] = useState(0)
+
   useEffect(() => {
     if (!swapTarget) {
       setSwapAlts([])
@@ -1222,10 +1249,30 @@ function App() {
   }, [chipSnackbarVisible])
 
   useEffect(() => {
+    if (!trolleySnackbar) return
+    const timeout = window.setTimeout(() => setTrolleySnackbar(''), 2200)
+    return () => window.clearTimeout(timeout)
+  }, [trolleySnackbar])
+
+  useEffect(() => {
     if (!removedEssentialName) return
     const timeout = window.setTimeout(() => setRemovedEssentialName(''), 2200)
     return () => window.clearTimeout(timeout)
   }, [removedEssentialName])
+
+  useLayoutEffect(() => {
+    if (appView !== 'build') {
+      setBuildFooterHeight(0)
+      return
+    }
+    const el = buildFooterRef.current
+    if (!el) return
+    const measure = () => setBuildFooterHeight(el.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [appView])
 
   useEffect(() => {
     if (!generated) return
@@ -1293,6 +1340,19 @@ function App() {
   const estimatedTotal = mealsTotal + essentialsTotal
   const displayTotal = generated ? estimatedTotal : 0
   const canAddToTrolley = generated && displayTotal > 0
+  /** Sum of line qty for selected meal ingredients + all essentials (matches trolley monetary total scope). */
+  const unitsForTrolleyAdd = (() => {
+    let n = 0
+    for (const m of mealGroups.filter((x) => !x.removed)) {
+      for (const i of m.ingredients) {
+        if (i.selected) n += i.qty
+      }
+    }
+    for (const e of essentials) {
+      n += e.qty
+    }
+    return n
+  })()
 
   const visibleMealCount = mealGroups.filter((m) => !m.removed).length
   const hasVisibleMeals = visibleMealCount > 0
@@ -1932,6 +1992,12 @@ function App() {
     }
   }
 
+  const bottomSnackbarBottomPx =
+    appView === 'build' && buildFooterHeight > 0 ? buildFooterHeight + 20 : 32
+
+  const bottomSnackbarBarClass =
+    'fixed left-1/2 z-40 -translate-x-1/2 bg-[#1f1f1f] px-5 py-3 text-white shadow-[0px_2px_8px_rgba(0,0,0,0.35)]'
+
   return (
     <main className="app-shell min-h-screen bg-[#fafafa] pb-32 font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]">
       <header className="border-b border-[#ddd] bg-white">
@@ -1958,7 +2024,14 @@ function App() {
                 <button className="h-10 w-10 bg-[#eee]" aria-label="Search">⌕</button>
               </div>
               <button className="h-10 bg-[#53565A] px-5 text-white">📅&nbsp; Sun 24 Aug, 11am</button>
-              <button className="h-10 w-36 border border-[#333]">🛒&nbsp; £{trolleyTotal.toFixed(2)}</button>
+              <button
+                type="button"
+                className="flex h-10 min-w-[9rem] items-center justify-center gap-2.5 border border-[#333] bg-white px-3 text-[#333]"
+                aria-label={`Trolley, ${trolleyItemCount} items, ${formatCurrency(trolleyTotal)}`}
+              >
+                <TrolleyIconWithBadge count={trolleyItemCount} />
+                <span className="text-[16px] font-medium tabular-nums">{formatCurrency(trolleyTotal)}</span>
+              </button>
             </div>
           </div>
 
@@ -1984,7 +2057,7 @@ function App() {
               <div className="text-[24px] font-normal tracking-[3px] text-[#5B8226]">WAITROSE</div>
               <div className="mt-0.5 text-[9px] font-normal tracking-[2px] text-[#5B8226]">&amp; PARTNERS</div>
             </div>
-            <div className="flex items-start gap-4 text-[12px] font-normal leading-5 text-[#333]">
+            <div className="flex items-center gap-4 text-[12px] font-normal leading-5 text-[#333]">
               <button className="flex min-w-[28px] flex-col items-center">
                 <span className="block h-4 leading-none"><IconSearch /></span>
                 <span>Search</span>
@@ -1993,9 +2066,19 @@ function App() {
                 <span className="block h-4 leading-none"><IconCalendar /></span>
                 <span>{generated ? '30 Wed' : 'Book a slot'}</span>
               </button>
-              <button className="flex min-w-[28px] flex-col items-center">
-                <span className="block h-4 leading-none">{generated ? <IconTrolley /> : <IconUser />}</span>
-                <span>{generated ? '£48.97' : 'Sign in'}</span>
+              <button
+                type="button"
+                className="flex min-w-[28px] flex-col items-center"
+                aria-label={
+                  generated
+                    ? `Trolley, ${trolleyItemCount} items, ${formatCurrency(trolleyTotal)}`
+                    : 'Sign in'
+                }
+              >
+                <span className="flex min-h-[22px] items-center justify-center leading-none">
+                  {generated ? <TrolleyIconWithBadge count={trolleyItemCount} /> : <IconUser />}
+                </span>
+                <span>{generated ? formatCurrency(trolleyTotal) : 'Sign in'}</span>
               </button>
               <button className="flex min-w-[28px] flex-col items-center">
                 <span className="block h-4 leading-none"><IconMenu /></span>
@@ -2513,7 +2596,10 @@ function App() {
       </section>
 
       {appView === 'build' && (
-      <footer className="fixed bottom-0 left-0 right-0 border-t border-[#ddd] bg-white shadow-[0px_-2px_4px_0px_rgba(0,0,0,0.05)]">
+      <footer
+        ref={buildFooterRef}
+        className="fixed bottom-0 left-0 right-0 border-t border-[#ddd] bg-white shadow-[0px_-2px_4px_0px_rgba(0,0,0,0.05)]"
+      >
         <div className="mx-auto flex w-full max-w-[1259px] flex-col items-center">
           <div className="flex w-full max-w-[768px] items-center justify-center gap-3 px-4 pb-4 pt-3 max-md:flex-col max-md:items-center max-md:justify-end max-md:gap-3 max-md:p-4">
             <div className="flex w-full items-center justify-between self-stretch text-[16px] leading-6 lg:justify-start">
@@ -2528,8 +2614,12 @@ function App() {
                 className={`flex w-full flex-col items-center justify-center self-stretch px-5 py-2 text-[16px] leading-6 ${canAddToTrolley ? 'bg-[#5B8226] text-white' : 'bg-[#eeeeee] text-[#a9a9a9]'}`}
                 disabled={!canAddToTrolley}
                 onClick={() => {
+                  const added = unitsForTrolleyAdd
                   setTrolleyTotal((v) => v + displayTotal)
-                  setToast('Selected items added to trolley')
+                  setTrolleyItemCount((c) => c + added)
+                  setTrolleySnackbar(
+                    `${added} item${added === 1 ? '' : 's'} added to trolley`,
+                  )
                 }}
               >
                 <span className="flex items-center justify-center gap-4">
@@ -2763,7 +2853,7 @@ function App() {
 
       {toast && <div className="fixed right-4 top-4 z-30 bg-[#154734] px-4 py-2 text-white">{toast}</div>}
       {chipSnackbarVisible && (
-        <div className="fixed bottom-8 left-1/2 z-40 -translate-x-1/2 bg-[#1f1f1f] px-5 py-3 text-white shadow-[0px_2px_8px_rgba(0,0,0,0.35)]">
+        <div className={bottomSnackbarBarClass} style={{ bottom: bottomSnackbarBottomPx }}>
           <span className="flex items-center gap-3 text-[16px] leading-6">
             <IconSuccessCheck />
             <span>Item has been added to essentials list</span>
@@ -2771,8 +2861,20 @@ function App() {
         </div>
       )}
 
+      {trolleySnackbar ? (
+        <div className={bottomSnackbarBarClass} style={{ bottom: bottomSnackbarBottomPx }}>
+          <span className="flex items-center gap-3 text-[16px] leading-6">
+            <IconSuccessCheck />
+            <span>{trolleySnackbar}</span>
+          </span>
+        </div>
+      ) : null}
+
       {removedEssentialName && (
-        <div className="fixed bottom-8 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap bg-[#1f1f1f] px-5 py-3 text-white shadow-[0px_2px_8px_rgba(0,0,0,0.35)]">
+        <div
+          className={`${bottomSnackbarBarClass} whitespace-nowrap`}
+          style={{ bottom: bottomSnackbarBottomPx }}
+        >
           <span className="flex items-center gap-3 text-[16px] leading-6">
             <IconBin />
             <span>
