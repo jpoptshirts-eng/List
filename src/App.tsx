@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { recognize } from 'tesseract.js'
+import { MyTrolleyView, type TrolleyLine } from './components/my-trolley-view'
 import { EssentialProductPod, IconBin, IconChevronMeal, RecipeProductPod } from './components/shopping-list-pods'
 import { runVisionOcr } from './lib/visionOcr'
 import { bestCatalogMatch, topCatalogMatches } from './lib/catalogMatch'
@@ -57,7 +58,55 @@ type SwapTarget =
   | { kind: 'meal'; mealId: string; ingredientId: string; item: SwapItem }
   | { kind: 'essential'; id: string; item: SwapItem }
 
-type AppView = 'index' | 'build'
+type AppView = 'index' | 'build' | 'trolley' | 'favourites'
+
+function mergeAppendBuildOntoTrolley(
+  prev: TrolleyLine[],
+  mealGroups: MealGroup[],
+  essentials: Essential[],
+): TrolleyLine[] {
+  const incoming: TrolleyLine[] = []
+  for (const m of mealGroups.filter((x) => !x.removed)) {
+    for (const i of m.ingredients) {
+      if (!i.selected) continue
+      incoming.push({
+        id: crypto.randomUUID(),
+        name: i.name,
+        image: i.image,
+        price: i.price,
+        unitPrice: i.unitPrice,
+        qty: i.qty,
+        allowSubstitute: true,
+      })
+    }
+  }
+  for (const e of essentials) {
+    incoming.push({
+      id: crypto.randomUUID(),
+      name: e.name,
+      image: e.image,
+      price: e.price,
+      unitPrice: e.unitPrice,
+      qty: e.qty,
+      allowSubstitute: true,
+    })
+  }
+  const key = (l: TrolleyLine) => `${l.name}\u0000${l.unitPrice}\u0000${String(l.price)}`
+  const map = new Map<string, TrolleyLine>()
+  for (const l of prev) {
+    map.set(key(l), { ...l })
+  }
+  for (const l of incoming) {
+    const k = key(l)
+    const ex = map.get(k)
+    if (ex) {
+      map.set(k, { ...ex, qty: ex.qty + l.qty })
+    } else {
+      map.set(k, l)
+    }
+  }
+  return Array.from(map.values())
+}
 
 const defaultInspiration = ['Spaghetti Bolognese', 'Shepherd’s Pie', 'Salmon & veg', 'Japanese pancakes', 'Lemon drizzle']
 
@@ -1031,15 +1080,6 @@ function IconCalendar() {
   )
 }
 
-function IconUser() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="8" cy="5" r="2.5" stroke="#333" strokeWidth="1.1" />
-      <path d="M3 13c.8-2 2.5-3 5-3s4.2 1 5 3" stroke="#333" strokeWidth="1.1" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 function IconTrolley({ color = '#333' }: { color?: string }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1151,8 +1191,7 @@ function App() {
   const [showPreferences, setShowPreferences] = useState(false)
   const [toast, setToast] = useState('')
   const [showMoreEssentials, setShowMoreEssentials] = useState(false)
-  const [trolleyTotal, setTrolleyTotal] = useState(0)
-  const [trolleyItemCount, setTrolleyItemCount] = useState(0)
+  const [trolleyLines, setTrolleyLines] = useState<TrolleyLine[]>([])
   const [trolleySnackbar, setTrolleySnackbar] = useState('')
   const [swapTarget, setSwapTarget] = useState<SwapTarget | null>(null)
   const [swapAlts, setSwapAlts] = useState<WaitroseCatalogItem[]>([])
@@ -1353,6 +1392,9 @@ function App() {
     }
     return n
   })()
+
+  const trolleyMoneyTotal = trolleyLines.reduce((s, l) => s + l.price * l.qty, 0)
+  const trolleyUnitCount = trolleyLines.reduce((s, l) => s + l.qty, 0)
 
   const visibleMealCount = mealGroups.filter((m) => !m.removed).length
   const hasVisibleMeals = visibleMealCount > 0
@@ -1979,6 +2021,7 @@ function App() {
       )
     }
     setAppView('index')
+    setActiveNavTab('Shopping lists')
   }
 
   function deleteList(id: string) {
@@ -1990,6 +2033,32 @@ function App() {
       setEssentials([])
       setGenerated(false)
     }
+  }
+
+  function changeTrolleyLineQty(id: string, delta: number) {
+    setTrolleyLines((prev) =>
+      prev
+        .map((l) => (l.id === id ? { ...l, qty: Math.max(0, l.qty + delta) } : l))
+        .filter((l) => l.qty > 0),
+    )
+  }
+
+  function removeTrolleyLine(id: string) {
+    setTrolleyLines((prev) => prev.filter((l) => l.id !== id))
+  }
+
+  function emptyTrolley() {
+    setTrolleyLines([])
+  }
+
+  function toggleTrolleySubstitute(id: string) {
+    setTrolleyLines((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, allowSubstitute: !l.allowSubstitute } : l)),
+    )
+  }
+
+  function setAllTrolleySubstitute(value: boolean) {
+    setTrolleyLines((prev) => prev.map((l) => ({ ...l, allowSubstitute: value })))
   }
 
   const bottomSnackbarBottomPx =
@@ -2027,10 +2096,11 @@ function App() {
               <button
                 type="button"
                 className="flex h-10 min-w-[9rem] items-center justify-center gap-2.5 border border-[#333] bg-white px-3 text-[#333]"
-                aria-label={`Trolley, ${trolleyItemCount} items, ${formatCurrency(trolleyTotal)}`}
+                aria-label={`Trolley, ${trolleyUnitCount} items, ${formatCurrency(trolleyMoneyTotal)}`}
+                onClick={() => setAppView('trolley')}
               >
-                <TrolleyIconWithBadge count={trolleyItemCount} />
-                <span className="text-[16px] font-medium tabular-nums">{formatCurrency(trolleyTotal)}</span>
+                <TrolleyIconWithBadge count={trolleyUnitCount} />
+                <span className="text-[16px] font-medium tabular-nums">{formatCurrency(trolleyMoneyTotal)}</span>
               </button>
             </div>
           </div>
@@ -2045,7 +2115,16 @@ function App() {
               <button className="px-1 py-2">Recipes</button>
             </div>
             <div className="flex items-center gap-5">
-              <button className="px-1 py-2">♡ Favourites</button>
+              <button
+                type="button"
+                className="px-1 py-2"
+                onClick={() => {
+                  setActiveNavTab('Favourites')
+                  setAppView('favourites')
+                }}
+              >
+                ♡ Favourites
+              </button>
               <button className="px-1 py-2">👤 My account ▾</button>
             </div>
           </div>
@@ -2069,16 +2148,13 @@ function App() {
               <button
                 type="button"
                 className="flex min-w-[28px] flex-col items-center"
-                aria-label={
-                  generated
-                    ? `Trolley, ${trolleyItemCount} items, ${formatCurrency(trolleyTotal)}`
-                    : 'Sign in'
-                }
+                aria-label={`Trolley, ${trolleyUnitCount} items, ${formatCurrency(trolleyMoneyTotal)}`}
+                onClick={() => setAppView('trolley')}
               >
                 <span className="flex min-h-[22px] items-center justify-center leading-none">
-                  {generated ? <TrolleyIconWithBadge count={trolleyItemCount} /> : <IconUser />}
+                  <TrolleyIconWithBadge count={trolleyUnitCount} />
                 </span>
-                <span>{generated ? formatCurrency(trolleyTotal) : 'Sign in'}</span>
+                <span>{formatCurrency(trolleyMoneyTotal)}</span>
               </button>
               <button className="flex min-w-[28px] flex-col items-center">
                 <span className="block h-4 leading-none"><IconMenu /></span>
@@ -2088,7 +2164,7 @@ function App() {
           </div>
         </div>
         <div className="bg-[#C4D600] py-2 text-center text-[16px] font-normal text-[#154734]">New lower prices on even more everyday items | <u>Shop now</u></div>
-        {appView === 'index' ? (
+        {appView !== 'build' ? (
           <div className="border-b border-[#ddd] relative lg:flex lg:justify-center">
             {/* Left chevron — shown when scrolled right */}
             {navChevrons.left && (
@@ -2125,6 +2201,11 @@ function App() {
                   key={tab}
                   onClick={() => {
                     setActiveNavTab(tab)
+                    if (tab === 'Shopping lists') {
+                      goToIndex()
+                    } else if (tab === 'Favourites') {
+                      setAppView('favourites')
+                    }
                     const container = navCarouselRef.current
                     const btn = container?.querySelector(`[data-nav-tab="${tab}"]`) as HTMLElement | null
                     if (container && btn) {
@@ -2593,6 +2674,41 @@ function App() {
         )}
           </>
         )}
+
+        {appView === 'trolley' && (
+          <MyTrolleyView
+            lines={trolleyLines}
+            formatCurrency={formatCurrency}
+            onQuantityDelta={changeTrolleyLineQty}
+            onRemoveLine={removeTrolleyLine}
+            onEmptyTrolley={emptyTrolley}
+            onToggleSubstitute={toggleTrolleySubstitute}
+            onSetAllSubstitute={setAllTrolleySubstitute}
+            onNavigateFavourites={() => {
+              setActiveNavTab('Favourites')
+              setAppView('favourites')
+            }}
+            onNavigateShoppingLists={goToIndex}
+          />
+        )}
+
+        {appView === 'favourites' && (
+          <div className="mx-auto max-w-[768px] px-4 py-12 text-center">
+            <h1
+              className="mb-4 uppercase tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]"
+              style={{ fontFamily: '"Gill Sans Nova for JL","Gill Sans","Gill Sans MT",Calibri,"Trebuchet MS",sans-serif', fontWeight: 500, fontSize: 'clamp(20px,4vw,28px)' }}
+            >
+              Favourites
+            </h1>
+            <p className="text-[16px] leading-6 text-[#53565A]">
+              Your saved favourites will appear here. Use the navigation tabs above and choose{' '}
+              <button type="button" className="font-medium underline" onClick={goToIndex}>
+                Shopping lists
+              </button>{' '}
+              to return to your lists.
+            </p>
+          </div>
+        )}
       </section>
 
       {appView === 'build' && (
@@ -2615,8 +2731,7 @@ function App() {
                 disabled={!canAddToTrolley}
                 onClick={() => {
                   const added = unitsForTrolleyAdd
-                  setTrolleyTotal((v) => v + displayTotal)
-                  setTrolleyItemCount((c) => c + added)
+                  setTrolleyLines((prev) => mergeAppendBuildOntoTrolley(prev, mealGroups, essentials))
                   setTrolleySnackbar(
                     `${added} item${added === 1 ? '' : 's'} added to trolley`,
                   )
