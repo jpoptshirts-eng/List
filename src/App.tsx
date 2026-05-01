@@ -1168,6 +1168,17 @@ function IconPreferences() {
   )
 }
 
+/** Icons/Small/Alert/Information — allergen disclaimer (swap for asset when provided). */
+function IconDisclaimerInfo() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.25" stroke="#53565A" strokeWidth="1" />
+      <circle cx="8" cy="5.25" r="0.65" fill="#53565A" />
+      <path d="M8 7.25v5" stroke="#53565A" strokeWidth="1.15" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function App() {
   const [generated, setGenerated] = useState(false)
   const [inputValue, setInputValueState] = useState('')
@@ -2531,6 +2542,19 @@ function App() {
               {listInputError}
             </p>
           ) : null}
+        </div>
+
+        <div
+          className="mx-auto mt-4 flex w-full max-w-[768px] items-start justify-center gap-2 self-stretch px-1 sm:items-center sm:mt-3"
+          role="note"
+          aria-label="Disclaimer"
+        >
+          <span className="inline-flex shrink-0 pt-[3px] text-[#53565A] sm:pt-0" aria-hidden="true">
+            <IconDisclaimerInfo />
+          </span>
+          <p className="max-w-[min(100%,544px)] text-left text-[14px] font-medium leading-5 text-[#333] sm:max-w-none sm:text-center">
+            Always check labels for allergens and verify quantities before adding to trolley.
+          </p>
         </div>
 
         <div className="mx-auto mt-10 w-full max-w-[768px] sm:mt-8">
