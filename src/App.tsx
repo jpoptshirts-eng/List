@@ -2303,7 +2303,7 @@ function App() {
               </div>
               <button
                 type="submit"
-                className="w-full shrink-0 bg-[#53565A] px-6 py-2.5 text-[16px] text-white disabled:opacity-60 sm:w-auto sm:py-2"
+                className="w-full shrink-0 px-6 py-2.5 text-[16px] sm:w-auto sm:py-2 enabled:bg-[#53565A] enabled:text-white disabled:bg-[#eeeeee] disabled:text-[#a9a9a9]"
                 disabled={
                   catalogLoading ||
                   imageProcessing ||
@@ -2422,7 +2422,7 @@ function App() {
                 <p className="mb-3 mt-2 text-[16px] font-light leading-6 text-[#53565A]">{essentialsMetaLine}</p>
                 <div className="border border-[#ddd] bg-white">
                   {visibleEssentials.map((item, idx) => (
-                    <div key={item.id} className={idx > 0 ? 'border-t border-[#ddd]' : ''}>
+                    <div key={item.id} className={idx > 0 ? 'border-[#ddd] border-t max-[544px]:border-t-0' : ''}>
                       <EssentialProductPod
                         name={item.name}
                         image={item.image}

@@ -122,11 +122,12 @@ export function QuantityNumerator({
   )
 }
 
-function ProductThumb({ label }: { label: string }) {
+function ProductThumb({ label, className }: { label: string; className?: string }) {
   const isUrl = /^https?:\/\//i.test(label)
   const isEmoji = !isUrl && label.length <= 8 && /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(label)
+  const base = className ?? 'relative size-9 shrink-0 overflow-hidden bg-[#fafafa] md:size-10'
   return (
-    <div className="relative size-9 shrink-0 overflow-hidden bg-[#fafafa] md:size-10">
+    <div className={base}>
       {isUrl ? (
         <img src={label} alt="" className="size-full object-cover" loading="lazy" />
       ) : isEmoji ? (
@@ -281,8 +282,34 @@ export function EssentialProductPod({ name, image, price, unitPrice, qty, select
 
   return (
     <div className="bg-white">
-      {/* Mobile */}
-      <div className="flex items-start gap-3 px-4 py-4 md:hidden">
+      {/* Mobile Figma layout: ≤544px */}
+      {/* Left column: checkbox stacked above image. Right: name+bin header / swap / price+qty row */}
+      <div className="flex min-[545px]:hidden px-4">
+        <div className="flex flex-1 items-start gap-4 border-b border-[#ddd] py-4">
+          {/* Left: checkbox above image */}
+          <div className="flex shrink-0 flex-col items-start gap-8 self-stretch">
+            {checkbox}
+            <ProductThumb label={image} className="relative size-12 shrink-0 overflow-hidden bg-[#fafafa]" />
+          </div>
+          {/* Right: content */}
+          <div className="flex min-w-0 flex-1 flex-col gap-2 items-start">
+            {/* Name + bin */}
+            <div className="flex w-full items-start gap-4">
+              {nameBlock}
+              {removeBtn}
+            </div>
+            <SwapLink onSwap={onSwap} />
+            {/* Price + qty stepper */}
+            <div className="flex w-full items-center gap-3">
+              <div className="min-w-0 flex-1">{priceBlock}</div>
+              <QuantityNumerator qty={qty} onDelta={onQtyDelta} idPrefix={idPrefix} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile fallback: 545px–767px (existing layout) */}
+      <div className="hidden min-[545px]:flex items-start gap-3 px-4 py-4 md:hidden">
         {checkbox}
         <ProductThumb label={image} />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -291,12 +318,12 @@ export function EssentialProductPod({ name, image, price, unitPrice, qty, select
           {priceBlock}
         </div>
         <div className="flex shrink-0 items-center self-center pt-1" style={{ gap: '16px' }}>
-          <QuantityNumerator qty={qty} onDelta={onQtyDelta} idPrefix={idPrefix} />
+          <QuantityNumerator qty={qty} onDelta={onQtyDelta} idPrefix={`${idPrefix}-m`} />
           {removeBtn}
         </div>
       </div>
 
-      {/* Desktop */}
+      {/* Desktop: ≥768px */}
       <div className="hidden min-h-[72px] items-center gap-4 px-4 py-3 md:flex">
         {checkbox}
         <div className="flex min-w-0 flex-1 items-center gap-5">
