@@ -2912,40 +2912,42 @@ function App() {
               <div className="flex flex-col gap-2">
                 <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Type</p>
                 <div className="flex items-center gap-4">
-                  <div className="relative flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <span className="text-[16px] leading-6 text-[#333]">Items only</span>
-                    <button
-                      type="button"
-                      aria-label="What does items only mean?"
-                      className="text-[#53565A]"
-                      onClick={() => setShowItemsOnlyTooltip((v) => !v)}
-                    >
-                      <IconDisclaimerInfo />
-                    </button>
-                    {showItemsOnlyTooltip ? (
-                      <div className="absolute left-0 top-[40px] z-20 w-[244px]">
-                        <div className="bg-[#333] p-4">
-                          <div className="flex items-start gap-3">
-                            <p className="flex-1 text-[14px] leading-5 text-white">
-                              Only show individual item essential products.
-                            </p>
-                            <button
-                              type="button"
-                              aria-label="Dismiss items only tooltip"
-                              className="text-white"
-                              onClick={() => setShowItemsOnlyTooltip(false)}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                                <path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                              </svg>
-                            </button>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        aria-label="What does items only mean?"
+                        className="text-[#53565A]"
+                        onClick={() => setShowItemsOnlyTooltip((v) => !v)}
+                      >
+                        <IconDisclaimerInfo />
+                      </button>
+                      {showItemsOnlyTooltip ? (
+                        <div className="absolute bottom-[calc(100%+10px)] left-0 z-20 w-[244px]">
+                          <div className="bg-[#333] p-4">
+                            <div className="flex items-start gap-3">
+                              <p className="flex-1 text-[14px] leading-5 text-white">
+                                Only show individual item essential products.
+                              </p>
+                              <button
+                                type="button"
+                                aria-label="Dismiss items only tooltip"
+                                className="text-white"
+                                onClick={() => setShowItemsOnlyTooltip(false)}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                                  <path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="absolute left-[-1px] top-full">
+                            <div className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[10px] border-l-transparent border-r-transparent border-t-[#333]" />
                           </div>
                         </div>
-                        <div className="pl-2">
-                          <div className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[10px] border-l-transparent border-r-transparent border-t-[#333]" />
-                        </div>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
                   <button
                     type="button"
