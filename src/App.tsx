@@ -890,6 +890,7 @@ function buildShopFromListLines(
   fallbackProducts: WaitroseCatalogItem[],
   serves: string,
   dietSelections: DietOption[],
+  itemsOnly: boolean,
 ): { meals: MealGroup[]; essentials: Essential[]; fallbackMatches: number } {
   const meals: MealGroup[] = []
   const essentials: Essential[] = []
@@ -903,6 +904,33 @@ function buildShopFromListLines(
     if (!trimmed) continue
 
     if (isLikelyMealLine(trimmed)) {
+      if (itemsOnly) {
+        const id = `ess-meal-${ei++}`
+        const queryCandidates = [
+          `${trimmed} ready meal`,
+          `${trimmed} meal kit`,
+          `${trimmed} kit`,
+          trimmed,
+        ]
+        let resolved: { item: Essential; usedFallback: boolean } | null = null
+        for (const query of queryCandidates) {
+          const candidate = essentialFromCatalogMatch(
+            { id, label: `${trimmed} ready meal`, match: query },
+            primaryProducts,
+            fallbackProducts,
+          )
+          if (candidate.item.price > 0 || candidate.item.image !== '🛒') {
+            resolved = candidate
+            break
+          }
+          if (!resolved) resolved = candidate
+        }
+        if (resolved) {
+          if (resolved.usedFallback) fallbackMatches += 1
+          essentials.push(resolved.item)
+        }
+        continue
+      }
       const id = `meal-list-${mi++}-${Math.random().toString(36).slice(2, 8)}`
       const ingredientSpecs = mealTemplateIngredients(trimmed)
       meals.push({
@@ -1224,6 +1252,8 @@ function App() {
   const [dietSelections, setDietSelections] = useState<DietOption[]>([])
   const [rangeSelections, setRangeSelections] = useState<RangeOption[]>([])
   const [household, setHousehold] = useState<HouseholdOption | null>(null)
+  const [itemsOnly, setItemsOnly] = useState(false)
+  const [showItemsOnlyTooltip, setShowItemsOnlyTooltip] = useState(false)
 
   const [mealGroups, setMealGroups] = useState<MealGroup[]>([])
   const [essentials, setEssentials] = useState<Essential[]>([])
@@ -1314,6 +1344,15 @@ function App() {
       document.body.style.overflow = prevOverflow
     }
   }, [swapTarget])
+
+  useEffect(() => {
+    if (!showPreferences) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [showPreferences])
 
   useEffect(() => {
     if (!toast) return
@@ -1457,7 +1496,14 @@ function App() {
       try {
         const payload = await loadCatalogForBuildShop()
         if (gen !== listBuildGenerationRef.current) return
-        const built = buildShopFromListLines(lines, payload.primary.products, payload.fallback?.products ?? [], serves, dietSelections)
+        const built = buildShopFromListLines(
+          lines,
+          payload.primary.products,
+          payload.fallback?.products ?? [],
+          serves,
+          dietSelections,
+          itemsOnly,
+        )
         setCatalogSourceLabel(
           built.fallbackMatches > 0 && payload.fallback
             ? `${payload.primary.source} (fallback used for ${built.fallbackMatches} item${built.fallbackMatches === 1 ? '' : 's'}: ${payload.fallback.source})`
@@ -1484,6 +1530,7 @@ function App() {
           payload.fallback?.products ?? [],
           serves,
           dietSelections,
+          itemsOnly,
         )
         setCatalogSourceLabel(
           built.fallbackMatches > 0 && payload.fallback
@@ -1501,6 +1548,7 @@ function App() {
         setListInputError(getCatalogErrorMessage(error))
       }
     }
+    setShowItemsOnlyTooltip(false)
     setShowPreferences(false)
   }
 
@@ -1570,6 +1618,7 @@ function App() {
         payload.fallback?.products ?? [],
         serves,
         dietSelections,
+        itemsOnly,
       )
 
       if (!builtShopHasRows(built)) {
@@ -1997,6 +2046,7 @@ function App() {
           payload.fallback?.products ?? [],
           serves,
           dietSelections,
+          itemsOnly,
         )
         setCatalogSourceLabel(
           built.fallbackMatches > 0 && payload.fallback
@@ -2820,7 +2870,12 @@ function App() {
       {showPreferences && (
         <div
           className="fixed inset-0 z-20 flex bg-black/30 sm:items-center sm:justify-center"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowPreferences(false) }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowItemsOnlyTooltip(false)
+              setShowPreferences(false)
+            }
+          }}
         >
           {/* Modal panel — full-screen on mobile, centred sheet on sm+ */}
           <div className="flex h-full w-full flex-col bg-white sm:h-auto sm:min-h-[677px] sm:max-h-[90vh] sm:max-w-[544px]">
@@ -2834,7 +2889,10 @@ function App() {
                 <button
                   aria-label="Close"
                   className="flex shrink-0 items-center justify-center text-[#333]"
-                  onClick={() => setShowPreferences(false)}
+                  onClick={() => {
+                    setShowItemsOnlyTooltip(false)
+                    setShowPreferences(false)
+                  }}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
@@ -2845,10 +2903,70 @@ function App() {
             </div>
 
             {/* ── Scrollable content ── */}
-            <div className="flex flex-1 flex-col gap-10 overflow-y-auto bg-[#fafafa] px-4 py-6">
+            <div className="flex flex-1 flex-col gap-10 overflow-y-auto bg-[#f5f5f5] px-4 py-6 sm:px-5">
               <p className="text-[16px] leading-6 text-[#333]">
                 Set your filters and start listing! We'll learn from your activity to automatically suggest the best matches for your household.
               </p>
+
+              {/* Type */}
+              <div className="flex flex-col gap-2">
+                <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Type</p>
+                <div className="flex items-center gap-4">
+                  <div className="relative flex items-center gap-2">
+                    <span className="text-[16px] leading-6 text-[#333]">Items only</span>
+                    <button
+                      type="button"
+                      aria-label="What does items only mean?"
+                      className="text-[#53565A]"
+                      onClick={() => setShowItemsOnlyTooltip((v) => !v)}
+                    >
+                      <IconDisclaimerInfo />
+                    </button>
+                    {showItemsOnlyTooltip ? (
+                      <div className="absolute left-0 top-[40px] z-20 w-[244px]">
+                        <div className="bg-[#333] p-4">
+                          <div className="flex items-start gap-3">
+                            <p className="flex-1 text-[14px] leading-5 text-white">
+                              Only show individual item essential products.
+                            </p>
+                            <button
+                              type="button"
+                              aria-label="Dismiss items only tooltip"
+                              className="text-white"
+                              onClick={() => setShowItemsOnlyTooltip(false)}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                                <path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="pl-2">
+                          <div className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[10px] border-l-transparent border-r-transparent border-t-[#333]" />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={itemsOnly}
+                    aria-label="Items only"
+                    onClick={() => setItemsOnly((v) => !v)}
+                    className={`inline-flex min-w-[52px] flex-col justify-center rounded-[16px] p-[2px] transition-colors ${itemsOnly ? 'items-end bg-[#78BE20]' : 'items-start bg-[#A9A9A9]'}`}
+                  >
+                    <span
+                      className={`flex size-6 items-center justify-center rounded-[16px] transition-colors ${itemsOnly ? 'bg-[#333] shadow-[0px_2px_1px_rgba(51,51,51,0.2)]' : 'bg-white shadow-[0px_2px_2px_rgba(51,51,51,0.2)]'}`}
+                    >
+                      {itemsOnly ? (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path d="M2.6 6.2 4.9 8.4 9.4 3.7" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ) : null}
+                    </span>
+                  </button>
+                </div>
+              </div>
 
               {/* Diet */}
               <div className="flex flex-col gap-2">
@@ -2932,7 +3050,13 @@ function App() {
               <div className="flex gap-5 p-5">
                 <button
                   className="flex flex-1 items-center justify-center border border-[#333] px-5 py-2 text-[16px] leading-6 text-[#333]"
-                  onClick={() => { setDietSelections([]); setRangeSelections([]); setHousehold(null) }}
+                  onClick={() => {
+                    setDietSelections([])
+                    setRangeSelections([])
+                    setHousehold(null)
+                    setItemsOnly(false)
+                    setShowItemsOnlyTooltip(false)
+                  }}
                 >
                   Clear
                 </button>
