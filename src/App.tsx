@@ -23,6 +23,7 @@ type Ingredient = {
   qty: number
   selected: boolean
   image: string
+  productType?: string
 }
 
 type MealGroup = {
@@ -43,6 +44,7 @@ type Essential = {
   qty: number
   selected: boolean
   image: string
+  productType?: string
 }
 
 type SavedList = {
@@ -53,7 +55,7 @@ type SavedList = {
   generated: boolean
 }
 
-type SwapItem = { name: string; image: string; price: number; unitPrice: string }
+type SwapItem = { name: string; image: string; price: number; unitPrice: string; productType?: string }
 type SwapTarget =
   | { kind: 'meal'; mealId: string; ingredientId: string; item: SwapItem }
   | { kind: 'essential'; id: string; item: SwapItem }
@@ -695,13 +697,14 @@ function essentialFromCatalogMatch(
     return {
       usedFallback,
       item: {
-      id: spec.id,
-      name: hit.name,
-      price: hit.price,
-      unitPrice: hit.unitPrice?.trim() || '—',
-      qty: 1,
-      selected: true,
-      image: ingredientThumb(hit),
+        id: spec.id,
+        name: hit.name,
+        price: hit.price,
+        unitPrice: hit.unitPrice?.trim() || '—',
+        qty: 1,
+        selected: true,
+        image: ingredientThumb(hit),
+        productType: hit.productType,
       },
     }
   }
@@ -739,6 +742,7 @@ function mealIngredientFromCatalog(
         qty: 1,
         selected: true,
         image: ingredientThumb(hit),
+        productType: hit.productType,
       },
     }
   }
@@ -1270,20 +1274,45 @@ function App() {
       return
     }
     if (swapCatalogRef.current) {
-      setSwapAlts(topCatalogMatches(swapTarget.item.name, swapCatalogRef.current, 4, swapTarget.item.name))
+      setSwapAlts(
+        topCatalogMatches(
+          swapTarget.item.name,
+          swapCatalogRef.current,
+          4,
+          swapTarget.item.name,
+          swapTarget.item.productType,
+        ),
+      )
       return
     }
     setSwapAltsLoading(true)
     void loadCatalogForBuildShop()
       .then((payload) => {
         swapCatalogRef.current = payload.primary.products
-        setSwapAlts(topCatalogMatches(swapTarget.item.name, payload.primary.products, 4, swapTarget.item.name))
+        setSwapAlts(
+          topCatalogMatches(
+            swapTarget.item.name,
+            payload.primary.products,
+            4,
+            swapTarget.item.name,
+            swapTarget.item.productType,
+          ),
+        )
         setSwapAltsLoading(false)
       })
       .catch(() => {
         setSwapAlts([])
         setSwapAltsLoading(false)
       })
+  }, [swapTarget])
+
+  useEffect(() => {
+    if (!swapTarget) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
   }, [swapTarget])
 
   useEffect(() => {
@@ -1629,7 +1658,14 @@ function App() {
                 ingredients: meal.ingredients.map((item) =>
                   item.id !== swapTarget.ingredientId
                     ? item
-                    : { ...item, name: choice.name, price: choice.price, unitPrice: choice.unitPrice, image: choice.imageUrl },
+                    : {
+                        ...item,
+                        name: choice.name,
+                        price: choice.price,
+                        unitPrice: choice.unitPrice,
+                        image: choice.imageUrl,
+                        productType: choice.productType,
+                      },
                 ),
               },
         ),
@@ -1639,7 +1675,14 @@ function App() {
         prev.map((item) =>
           item.id !== swapTarget.id
             ? item
-            : { ...item, name: choice.name, price: choice.price, unitPrice: choice.unitPrice, image: choice.imageUrl },
+            : {
+                ...item,
+                name: choice.name,
+                price: choice.price,
+                unitPrice: choice.unitPrice,
+                image: choice.imageUrl,
+                productType: choice.productType,
+              },
         ),
       )
     }
@@ -2639,7 +2682,7 @@ function App() {
                                 ),
                               )
                             }
-                            onSwap={() => setSwapTarget({ kind: 'meal', mealId: meal.id, ingredientId: item.id, item: { name: item.name, image: item.image, price: item.price, unitPrice: item.unitPrice } })}
+                            onSwap={() => setSwapTarget({ kind: 'meal', mealId: meal.id, ingredientId: item.id, item: { name: item.name, image: item.image, price: item.price, unitPrice: item.unitPrice, productType: item.productType } })}
                             onQtyDelta={(d) => changeMealQty(meal.id, item.id, d)}
                           />
                         ))}
@@ -2671,7 +2714,7 @@ function App() {
                             prev.map((e) => (e.id === item.id ? { ...e, selected: !e.selected } : e)),
                           )
                         }
-                        onSwap={() => setSwapTarget({ kind: 'essential', id: item.id, item: { name: item.name, image: item.image, price: item.price, unitPrice: item.unitPrice } })}
+                        onSwap={() => setSwapTarget({ kind: 'essential', id: item.id, item: { name: item.name, image: item.image, price: item.price, unitPrice: item.unitPrice, productType: item.productType } })}
                         onQtyDelta={(d) => changeEssentialQty(item.id, d)}
                         onRemove={() => {
                           setRemovedEssentialName(item.name)
@@ -2907,21 +2950,23 @@ function App() {
 
       {swapTarget && (
         <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/30 p-0 md:items-center md:p-4">
-          <div className="relative w-full overflow-auto bg-white pb-4 md:max-h-[90vh] md:max-w-[720px]">
-            {/* X close button */}
-            <button
-              className="absolute right-0 top-0 z-10 pr-[20px] pt-[20px] text-[#53565A]"
-              onClick={() => setSwapTarget(null)}
-              aria-label="Close"
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
+          <div className="relative flex h-[100dvh] w-full min-h-0 flex-col bg-white md:h-auto md:max-h-[90vh] md:max-w-[720px]">
+            <div className="sticky top-0 z-10 bg-white pb-4 pt-4">
+              {/* X close button */}
+              <button
+                className="absolute right-0 top-0 z-10 pr-[20px] pt-[20px] text-[#53565A]"
+                onClick={() => setSwapTarget(null)}
+                aria-label="Close"
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
 
-            <h2 className="mb-6 mt-4 text-center tracking-[3px] text-[#53565A]" style={{ fontSize: '20px' }}>
-              Swap item
-            </h2>
+              <h2 className="mt-1 text-center tracking-[3px] text-[#53565A]" style={{ fontSize: '20px' }}>
+                Swap item
+              </h2>
+            </div>
 
             {/* Current Selection header */}
             <div className="bg-[#53565A] px-4 py-3">
@@ -2952,7 +2997,7 @@ function App() {
             </div>
 
             {/* Alternatives list */}
-            <div className="overflow-auto pb-4">
+            <div className="min-h-0 flex-1 overflow-y-auto pb-4">
               {swapAltsLoading ? (
                 <div className="px-4 py-8 text-center text-sm text-[#757575]">Finding alternatives…</div>
               ) : swapAlts.length === 0 ? (

@@ -7,6 +7,7 @@ export type WaitroseCatalogItem = {
   unitPrice: string
   imageUrl: string
   productUrl: string
+  productType?: string
 }
 
 export type WaitroseCatalogPayload = {
@@ -58,6 +59,7 @@ type PopMasCatalogRow = {
   Size: string | null
   Price: string | null
   'Formatted PPU': string | null
+  'Product Type': string | null
 }
 
 function mapPopMasRowsToProducts(rows: PopMasCatalogRow[]): WaitroseCatalogItem[] {
@@ -73,6 +75,7 @@ function mapPopMasRowsToProducts(rows: PopMasCatalogRow[]): WaitroseCatalogItem[
       unitPrice: unit || size || '—',
       imageUrl: row.imageUrl?.trim() || '',
       productUrl: '',
+      productType: row['Product Type']?.trim() || undefined,
     }
   })
 }
@@ -103,7 +106,7 @@ async function loadPopMasCatalog(): Promise<WaitroseCatalogPayload | null> {
 
   const { data, error } = await db
     .from(POPMAS_TABLE)
-    .select('id, imageUrl, Name, Size, Price, "Formatted PPU"')
+    .select('id, imageUrl, Name, Size, Price, "Formatted PPU", "Product Type"')
     .order('id', { ascending: true })
 
   if (error) return null

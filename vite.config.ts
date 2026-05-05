@@ -65,7 +65,7 @@ function popmasApi(supabaseUrl: string, supabaseAnonKey: string) {
 
           const endpoint =
             `${supabaseUrl}/rest/v1/POPMAS` +
-            '?select=id,imageUrl,Name,Size,Price,"Formatted%20PPU"&order=id.asc'
+            '?select=id,imageUrl,Name,Size,Price,"Formatted%20PPU","Product%20Type"&order=id.asc'
 
           const r = await fetch(endpoint, {
             headers: {

@@ -250,6 +250,7 @@ export function topCatalogMatches(
   products: WaitroseCatalogItem[],
   limit = 4,
   excludeName?: string,
+  preferredProductType?: string,
 ): WaitroseCatalogItem[] {
   const excludeNorm = excludeName ? normalize(excludeName) : undefined
 
@@ -285,8 +286,24 @@ export function topCatalogMatches(
 
   const requiredScored = requiredTerm ? scored.filter(({ p }) => matchRequiredTerm(p.name)) : scored
   const finalPool = requiredScored.length > 0 ? requiredScored : scored
+  const preferredTypeNorm = preferredProductType ? normalize(preferredProductType) : ''
 
-  return finalPool
+  const typeFilteredPool =
+    preferredTypeNorm.length > 0
+      ? finalPool.filter(({ p }) => {
+          const itemType = normalize(p.productType ?? '')
+          return (
+            itemType.length > 0 &&
+            (itemType === preferredTypeNorm ||
+              itemType.includes(preferredTypeNorm) ||
+              preferredTypeNorm.includes(itemType))
+          )
+        })
+      : finalPool
+
+  const rankedPool = typeFilteredPool.length > 0 ? typeFilteredPool : finalPool
+
+  return rankedPool
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map(({ p }) => p)
