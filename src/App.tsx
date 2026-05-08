@@ -129,7 +129,6 @@ const PERSONALISED_POOL = [
   'Tomato Soup',
   'Greek Yoghurt',
   'Orange Juice',
-  'Basmati Rice',
   'Broccoli',
   'Garlic',
   'Bananas',
@@ -1122,7 +1121,7 @@ function derivePersonalisedChips(params: {
     )
 
   if (hasAny(['spaghetti', 'pasta'])) suggestions.push('Garlic Bread', 'Pasta Bake')
-  if (hasAny(['curry', 'thai'])) suggestions.push('Basmati Rice', 'Naan Bread')
+  if (hasAny(['curry', 'thai'])) suggestions.push('Green Thai Curry')
   if (hasAny(['chicken'])) suggestions.push('Chicken Fajitas')
   if (hasAny(['milk', 'yoghurt'])) suggestions.push('Greek Yoghurt', 'Bananas')
   if (hasAny(['bread'])) suggestions.push('Tomato Soup')
@@ -1537,7 +1536,22 @@ function App() {
     })
   })()
 
-  const inspirationChips = inspirationBase.filter((chip) => !usedInspirationChips.includes(chip))
+  const inspirationPool = Array.from(
+    new Set([
+      ...inspirationBase,
+      ...derivePersonalisedChips({
+        meals: mealGroups,
+        essentials,
+        dietSelections,
+        rangeSelections,
+      }),
+      ...defaultInspiration,
+      ...PERSONALISED_POOL,
+    ]),
+  )
+  const inspirationChips = inspirationPool
+    .filter((chip) => !usedInspirationChips.includes(chip))
+    .slice(0, inspirationBase.length)
   const visibleUploadedFileName = uploadedFileName
 
   const helperCopy = generated
