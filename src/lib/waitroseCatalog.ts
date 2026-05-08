@@ -104,13 +104,26 @@ async function loadPopMasCatalog(): Promise<WaitroseCatalogPayload | null> {
   const db = getSupabase()
   if (!db) return null
 
-  const { data, error } = await db
-    .from(POPMAS_TABLE)
-    .select('"Order", "imageUrl", "Name", "Size", "Price", "Formatted PPU", "Product Type"')
-    .order('Order', { ascending: true })
+  const pageSize = 1000
+  const rows: PopMasCatalogRow[] = []
+  let from = 0
 
-  if (error) return null
-  const rows = (data ?? []) as PopMasCatalogRow[]
+  while (true) {
+    const to = from + pageSize - 1
+    const { data, error } = await db
+      .from(POPMAS_TABLE)
+      .select('"Order", "imageUrl", "Name", "Size", "Price", "Formatted PPU", "Product Type"')
+      .order('Order', { ascending: true })
+      .range(from, to)
+
+    if (error) return null
+    const batch = (data ?? []) as PopMasCatalogRow[]
+    if (batch.length === 0) break
+    rows.push(...batch)
+    if (batch.length < pageSize) break
+    from += pageSize
+  }
+
   if (rows.length === 0) return null
 
   return {

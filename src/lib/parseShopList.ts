@@ -132,6 +132,7 @@ const MEAL_HINTS = [
   'cottage pie',
   'pie for',
   'pasta bake',
+  'roast',
   'roast chicken',
   'roast beef',
   'roast lamb',
@@ -159,6 +160,7 @@ const INGREDIENT_QUALIFIERS = [
 /** Heuristic: treat a line as a meal group if it looks like a dish rather than a single ingredient. */
 export function isLikelyMealLine(line: string): boolean {
   const t = line.toLowerCase()
+  if (/sausage\s*(?:&|and)\s*mash/u.test(t)) return true
   if (t.length >= 28) return true
   if (!MEAL_HINTS.some((h) => t.includes(h))) return false
   // Override: if the line looks like a product (sauce, sheets, paste…) it's an essential.

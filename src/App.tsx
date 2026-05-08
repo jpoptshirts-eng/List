@@ -110,7 +110,15 @@ function mergeAppendBuildOntoTrolley(
   return Array.from(map.values())
 }
 
-const defaultInspiration = ['Spaghetti Bolognese', 'Shepherd’s Pie', 'Salmon & veg', 'Japanese pancakes', 'Lemon drizzle']
+const defaultInspiration = [
+  'Spaghetti Bolognese',
+  'Shepherd’s Pie',
+  'Sunday Roast',
+  'Sausage & Mash',
+  'Salmon & veg',
+  'Pancakes',
+  'Lemon drizzle',
+]
 
 const PERSONALISED_POOL = [
   'Shepherd’s Pie',
@@ -618,13 +626,6 @@ function constrainProductsForQuery(
     'detergent',
     'bleach',
     'bin bag',
-    'snack',
-    'crisps',
-    'chips',
-    'walkers',
-    'sensations',
-    'chocolate',
-    'sweets',
   ]
 
   // Meal ingredient lookups should never resolve into non-cooking categories.
@@ -826,6 +827,50 @@ function mealTemplateIngredients(mealTitle: string): Array<{ label: string; matc
     ]
   }
 
+  if (n.includes('sausage') && n.includes('mash')) {
+    return [
+      { label: 'Pork Sausages', match: 'pork sausages' },
+      { label: 'Potatoes', match: 'potatoes' },
+      { label: 'Onions', match: 'onions' },
+      { label: 'Unsalted Butter', match: 'unsalted butter' },
+      { label: 'Milk', match: 'milk' },
+      { label: 'Gravy Granules', match: 'gravy granules' },
+    ]
+  }
+
+  if (n.includes('pancake')) {
+    return [
+      { label: 'Self Raising Flour', match: 'self raising flour' },
+      { label: 'Eggs', match: 'eggs' },
+      { label: 'Milk', match: 'milk' },
+      { label: 'Unsalted Butter', match: 'unsalted butter' },
+      { label: 'Lemons', match: 'lemons' },
+      { label: 'Caster Sugar', match: 'caster sugar' },
+    ]
+  }
+
+  if (n.includes('omelette') || n.includes('omelet')) {
+    return [
+      { label: 'Eggs', match: 'eggs' },
+      { label: 'Unsalted Butter', match: 'unsalted butter' },
+      { label: 'Cheddar Cheese', match: 'cheddar cheese' },
+      { label: 'Milk', match: 'milk' },
+      { label: 'Onions', match: 'onions' },
+      { label: 'Mushrooms', match: 'mushrooms' },
+    ]
+  }
+
+  if (n.includes('salmon') && (n.includes('veg') || n.includes('vegetable'))) {
+    return [
+      { label: 'Salmon Fillets', match: 'salmon fillets' },
+      { label: 'Broccoli', match: 'broccoli' },
+      { label: 'Carrots', match: 'carrots' },
+      { label: 'Green Beans', match: 'green beans' },
+      { label: 'Potatoes', match: 'potatoes' },
+      { label: 'Lemons', match: 'lemons' },
+    ]
+  }
+
   if (n.includes('pasta') && n.includes('bake')) {
     return [
       { label: 'Pasta', match: 'pasta' },
@@ -835,6 +880,17 @@ function mealTemplateIngredients(mealTitle: string): Array<{ label: string; matc
       { label: 'Peppers', match: 'peppers' },
       { label: 'Grated Cheese', match: 'grated cheese' },
       { label: 'Garlic', match: 'garlic' },
+    ]
+  }
+
+  if (n.includes('green') && n.includes('thai') && n.includes('curry')) {
+    return [
+      { label: 'Thai Green Curry Paste', match: 'thai green curry paste cooking' },
+      { label: 'Coconut Milk', match: 'coconut milk' },
+      { label: 'Chicken Breast', match: 'chicken breast' },
+      { label: 'Jasmine Rice', match: 'jasmine rice' },
+      { label: 'Onions', match: 'onions' },
+      { label: 'Peppers', match: 'peppers' },
     ]
   }
 
@@ -852,23 +908,12 @@ function mealTemplateIngredients(mealTitle: string): Array<{ label: string; matc
 
   if (n.includes('roast')) {
     return [
-      { label: 'Roasting Joint', match: 'chicken whole' },
+      { label: 'Roast Chicken', match: 'whole chicken' },
       { label: 'Potatoes', match: 'potatoes' },
       { label: 'Carrots', match: 'carrots' },
       { label: 'Broccoli', match: 'broccoli' },
       { label: 'Gravy Granules', match: 'gravy granules' },
       { label: 'Stuffing', match: 'stuffing mix' },
-    ]
-  }
-
-  if (n.includes('green') && n.includes('thai') && n.includes('curry')) {
-    return [
-      { label: 'Thai Green Curry Paste', match: 'thai green curry paste cooking' },
-      { label: 'Coconut Milk', match: 'coconut milk' },
-      { label: 'Chicken Breast', match: 'chicken breast' },
-      { label: 'Jasmine Rice', match: 'jasmine rice' },
-      { label: 'Onions', match: 'onions' },
-      { label: 'Peppers', match: 'peppers' },
     ]
   }
 
@@ -891,6 +936,7 @@ function buildShopFromListLines(
   serves: string,
   dietSelections: DietOption[],
   itemsOnly: boolean,
+  forcedMealLines?: Set<string>,
 ): { meals: MealGroup[]; essentials: Essential[]; fallbackMatches: number } {
   const meals: MealGroup[] = []
   const essentials: Essential[] = []
@@ -902,8 +948,9 @@ function buildShopFromListLines(
   for (const label of lines) {
     const trimmed = label.trim()
     if (!trimmed) continue
+    const forceMeal = forcedMealLines?.has(normalizeMealName(trimmed)) ?? false
 
-    if (isLikelyMealLine(trimmed)) {
+    if (forceMeal || isLikelyMealLine(trimmed)) {
       if (itemsOnly) {
         const id = `ess-meal-${ei++}`
         const queryCandidates = [
@@ -2030,6 +2077,10 @@ function App() {
       try {
         const payload = await loadCatalogForBuildShop()
         if (gen !== listBuildGenerationRef.current) return
+        const chipNorm = normalizeMealName(tag)
+        const chipWordCount = chipNorm.split(/\s+/).filter(Boolean).length
+        const singleWordMealChipHints = new Set(['pancakes', 'omelette', 'omelet'])
+        const shouldForceMealForChip = chipWordCount > 1 || singleWordMealChipHints.has(chipNorm)
         const built = buildShopFromListLines(
           [tag],
           payload.primary.products,
@@ -2037,6 +2088,7 @@ function App() {
           serves,
           dietSelections,
           itemsOnly,
+          shouldForceMealForChip ? new Set([chipNorm]) : undefined,
         )
         setCatalogSourceLabel(
           built.fallbackMatches > 0 && payload.fallback

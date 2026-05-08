@@ -63,26 +63,37 @@ function popmasApi(supabaseUrl: string, supabaseAnonKey: string) {
             return
           }
 
-          const endpoint =
-            `${supabaseUrl}/rest/v1/POPMAS` +
-            '?select=%22Order%22,%22imageUrl%22,%22Name%22,%22Size%22,%22Price%22,%22Formatted%20PPU%22,%22Product%20Type%22&order=%22Order%22.asc'
+          const pageSize = 1000
+          const rows: unknown[] = []
+          let offset = 0
 
-          const r = await fetch(endpoint, {
-            headers: {
-              apikey: supabaseAnonKey,
-              Authorization: `Bearer ${supabaseAnonKey}`,
-            },
-          })
+          while (true) {
+            const endpoint =
+              `${supabaseUrl}/rest/v1/POPMAS` +
+              `?select=%22Order%22,%22imageUrl%22,%22Name%22,%22Size%22,%22Price%22,%22Formatted%20PPU%22,%22Product%20Type%22&order=%22Order%22.asc&limit=${pageSize}&offset=${offset}`
 
-          if (!r.ok) {
-            const body = await r.text()
-            res.statusCode = r.status
-            res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ error: `Supabase POPMAS HTTP ${r.status}`, detail: body }))
-            return
+            const r = await fetch(endpoint, {
+              headers: {
+                apikey: supabaseAnonKey,
+                Authorization: `Bearer ${supabaseAnonKey}`,
+              },
+            })
+
+            if (!r.ok) {
+              const body = await r.text()
+              res.statusCode = r.status
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: `Supabase POPMAS HTTP ${r.status}`, detail: body }))
+              return
+            }
+
+            const batch = (await r.json()) as unknown[]
+            if (batch.length === 0) break
+            rows.push(...batch)
+            if (batch.length < pageSize) break
+            offset += pageSize
           }
 
-          const rows = await r.json()
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(rows))
         } catch (e) {
