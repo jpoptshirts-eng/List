@@ -2258,10 +2258,11 @@ function App() {
 
   const bottomSnackbarBarClass =
     'fixed left-1/2 z-40 -translate-x-1/2 bg-[#1f1f1f] px-5 py-3 text-white shadow-[0px_2px_8px_rgba(0,0,0,0.35)]'
+  const suppressStickyHeader = showPreferences || Boolean(swapTarget)
 
   return (
     <main className="app-shell min-h-screen bg-[#fafafa] pb-32 font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]">
-      <div className="sticky top-0 z-50 bg-white">
+      <div className={suppressStickyHeader ? 'relative z-50 bg-white' : 'sticky top-0 z-50 bg-white'}>
         <div className="mx-auto hidden max-w-[1260px] lg:block">
           <div className="flex h-10 items-center justify-between px-8 text-[14px] text-[#333]">
             <div className="flex items-center gap-4">
