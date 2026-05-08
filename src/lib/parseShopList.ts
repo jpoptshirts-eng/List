@@ -46,7 +46,7 @@ export function isLikelyUiPlaceholderList(text: string): boolean {
     n.includes('try milk') &&
     n.includes('pasta') &&
     n.includes('bread') &&
-    (n.includes('upload') || n.includes('say a list') || n.includes('type') || n.includes('paste'))
+    (n.includes('upload') || n.includes('type') || n.includes('paste') || n.includes('say a list'))
   )
     return true
   if (
@@ -59,7 +59,7 @@ export function isLikelyUiPlaceholderList(text: string): boolean {
   if (
     n.includes('try milk, pasta, bread') &&
     n.includes('type, paste') &&
-    n.includes('upload or say')
+    (n.includes('upload a list') || n.includes('upload or say'))
   )
     return true
   return false
@@ -69,8 +69,9 @@ export function isLikelyUiPlaceholderList(text: string): boolean {
 function isNoiseListLine(line: string): boolean {
   const t = stripInvisibleAndTrim(line).toLowerCase().replace(/\u2019|\u2018/g, "'")
   if (t.length === 0) return true
-  if (/^(type|paste|or|a|the|and|we|ll|to|of|in|on|at|for|say|list|tap|add|by|using|mic|an|your|shop|seconds|review|edit|below|more|any|time)\.?$/u.test(t))
+  if (/^(type|paste|or|a|the|and|we|ll|to|of|in|on|at|for|say|list|tap|add|by|using|mic|an|your|shop|seconds|review|edit|below|more|any|time|upload)\.?$/u.test(t))
     return true
+  if (/^or upload a list\.?$/u.test(t)) return true
   if (/^upload or say a list\.?$/u.test(t)) return true
   if (/bread\s*-\s*type/u.test(t)) return true
   if (/we'?ll build your shop/u.test(t)) return true
