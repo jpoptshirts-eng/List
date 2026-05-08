@@ -2195,7 +2195,7 @@ function App() {
 
   return (
     <main className="app-shell min-h-screen bg-[#fafafa] pb-32 font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]">
-      <header className="border-b border-[#ddd] bg-white">
+      <div className="sticky top-0 z-50 bg-white">
         <div className="mx-auto hidden max-w-[1260px] lg:block">
           <div className="flex h-10 items-center justify-between px-8 text-[14px] text-[#333]">
             <div className="flex items-center gap-4">
@@ -2261,10 +2261,10 @@ function App() {
               <button className="px-1 py-2">👤 My account ▾</button>
             </div>
           </div>
-        </div>
+          </div>
 
-        <div className="border-b border-[#ddd] lg:hidden">
-          <div className="flex h-[50px] items-center justify-between px-4">
+          <div className="border-b border-[#ddd] lg:hidden">
+            <div className="flex h-[50px] items-center justify-between px-4">
             <button
               type="button"
               onClick={resetPrototype}
@@ -2273,7 +2273,7 @@ function App() {
             >
               <WaitroseLogo className="h-[36px] w-auto" />
             </button>
-            <div className="flex items-center gap-4 text-[12px] font-normal leading-5 text-[#333]">
+              <div className="flex items-center gap-4 text-[12px] font-normal leading-5 text-[#333]">
               <button className="flex min-w-[28px] flex-col items-center">
                 <span className="block h-4 leading-none"><IconSearch /></span>
                 <span>Search</span>
@@ -2297,9 +2297,11 @@ function App() {
                 <span className="block h-4 leading-none"><IconMenu /></span>
                 <span>Menu</span>
               </button>
+              </div>
             </div>
           </div>
-        </div>
+      </div>
+      <header className="border-b border-[#ddd] bg-white">
         <div className="bg-[#C4D600] py-2 text-center text-[16px] font-normal text-[#154734]">New lower prices on even more everyday items | <u>Shop now</u></div>
         {appView !== 'build' ? (
           <div className="border-b border-[#ddd] relative lg:flex lg:justify-center">
