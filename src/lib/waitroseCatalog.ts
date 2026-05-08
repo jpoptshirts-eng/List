@@ -53,7 +53,7 @@ function isDevLiveAvailable(): boolean {
 }
 
 type PopMasCatalogRow = {
-  id: number
+  Order?: number | null
   imageUrl: string | null
   Name: string | null
   Size: string | null
@@ -63,13 +63,13 @@ type PopMasCatalogRow = {
 }
 
 function mapPopMasRowsToProducts(rows: PopMasCatalogRow[]): WaitroseCatalogItem[] {
-  return rows.map((row) => {
+  return rows.map((row, idx) => {
     const name = (row.Name ?? '').trim()
     const size = (row.Size ?? '').trim()
     const unit = row['Formatted PPU']?.trim()
     const displayName = size ? `${name} (${size})` : name
     return {
-      id: `${POPMAS_TABLE}-${row.id}`,
+      id: `${POPMAS_TABLE}-${row.Order ?? idx + 1}`,
       name: displayName,
       price: parsePriceText(row.Price),
       unitPrice: unit || size || '—',
@@ -106,8 +106,8 @@ async function loadPopMasCatalog(): Promise<WaitroseCatalogPayload | null> {
 
   const { data, error } = await db
     .from(POPMAS_TABLE)
-    .select('id, imageUrl, Name, Size, Price, "Formatted PPU", "Product Type"')
-    .order('id', { ascending: true })
+    .select('"Order", "imageUrl", "Name", "Size", "Price", "Formatted PPU", "Product Type"')
+    .order('Order', { ascending: true })
 
   if (error) return null
   const rows = (data ?? []) as PopMasCatalogRow[]
