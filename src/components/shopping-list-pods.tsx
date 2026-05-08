@@ -368,3 +368,22 @@ export function IconBin() {
     </svg>
   )
 }
+
+export function IconPen() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <g clipPath="url(#icon-pen-clip)">
+        <path
+          d="M5.14441 16.8556L5.77433 12.4987L15.8006 2L20.0525 6.25197L9.55386 16.2782L5.14441 16.8556ZM7.29664 13.1811L7.03417 14.9659L8.81895 14.7034L17.7953 6.19947L15.8531 4.25722L7.29664 13.1811Z"
+          fill="#53565A"
+        />
+        <path d="M4.67192 17.1181H0V18.6929H4.67192V17.1181Z" fill="#53565A" />
+      </g>
+      <defs>
+        <clipPath id="icon-pen-clip">
+          <rect width="20" height="20" fill="white" />
+        </clipPath>
+      </defs>
+    </svg>
+  )
+}

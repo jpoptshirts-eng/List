@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { recognize } from 'tesseract.js'
 import { MyTrolleyView, type TrolleyLine } from './components/my-trolley-view'
-import { EssentialProductPod, IconBin, IconChevronMeal, RecipeProductPod } from './components/shopping-list-pods'
+import { EssentialProductPod, IconBin, IconChevronMeal, IconPen, RecipeProductPod } from './components/shopping-list-pods'
 import { runVisionOcr } from './lib/visionOcr'
 import { bestCatalogMatch, topCatalogMatches } from './lib/catalogMatch'
 import { getShopListLinesFromUserInput, isLikelyMealLine, isLikelyUiPlaceholderList } from './lib/parseShopList'
@@ -1311,6 +1311,8 @@ function App() {
   const [activeListId, setActiveListId] = useState<string | null>(null)
   const [listName, setListName] = useState('')
   const [newListNameInput, setNewListNameInput] = useState('')
+  const [editingListId, setEditingListId] = useState<string | null>(null)
+  const [editingListNameInput, setEditingListNameInput] = useState('')
   const [activeNavTab, setActiveNavTab] = useState<string>('Shopping lists')
   const navCarouselRef = useRef<HTMLDivElement | null>(null)
   const [navChevrons, setNavChevrons] = useState<{ left: boolean; right: boolean }>({ left: false, right: true })
@@ -2127,6 +2129,27 @@ function App() {
     }
   }
 
+  function startEditingListName(list: SavedList) {
+    setEditingListId(list.id)
+    setEditingListNameInput(list.name)
+  }
+
+  function cancelEditingListName() {
+    setEditingListId(null)
+    setEditingListNameInput('')
+  }
+
+  function commitListNameEdit(listId: string) {
+    const nextName = editingListNameInput.trim()
+    if (!nextName) {
+      cancelEditingListName()
+      return
+    }
+    setSavedLists((prev) => prev.map((l) => (l.id === listId ? { ...l, name: nextName } : l)))
+    if (activeListId === listId) setListName(nextName)
+    cancelEditingListName()
+  }
+
   function resetPrototype() {
     // Clear the dismissal flag so the auto-save info banner reappears, then
     // hard-reload to wipe all in-memory state for a fresh-start experience.
@@ -2416,6 +2439,7 @@ function App() {
                   ...activeMeals.flatMap((m) => m.ingredients).map((i) => i.image),
                   ...list.essentials.map((e) => e.image),
                 ].filter(Boolean).slice(0, 4)
+                const isEditingThisList = editingListId === list.id
                 const mealCount = activeMeals.length
                 const itemCount =
                   activeMeals.reduce((s, m) => s + m.ingredients.length, 0) +
@@ -2427,8 +2451,38 @@ function App() {
                 return (
                   <div key={list.id} className="w-full bg-white shadow-[0px_2px_1px_rgba(0,0,0,0.02)] sm:w-[343px]">
                     <div className="flex items-center justify-between border-b border-[#ddd] p-4">
-                      <div className="flex min-w-0 items-center gap-4 text-[16px]">
-                        <span className="truncate font-medium">{list.name}</span>
+                      <div className="flex min-w-0 flex-1 items-center gap-3 text-[16px]">
+                        {isEditingThisList ? (
+                          <input
+                            value={editingListNameInput}
+                            onChange={(e) => setEditingListNameInput(e.target.value)}
+                            onBlur={() => commitListNameEdit(list.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                commitListNameEdit(list.id)
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault()
+                                cancelEditingListName()
+                              }
+                            }}
+                            className="min-w-0 flex-1 border-b border-[#333] bg-transparent font-medium text-[#333] outline-none"
+                            aria-label={`Edit ${list.name}`}
+                            autoFocus
+                          />
+                        ) : (
+                          <>
+                            <span className="truncate font-medium">{list.name}</span>
+                            <button
+                              type="button"
+                              aria-label={`Edit ${list.name}`}
+                              className="shrink-0 text-[#757575]"
+                              onClick={() => startEditingListName(list)}
+                            >
+                              <IconPen />
+                            </button>
+                          </>
+                        )}
                         <span className="shrink-0 font-light text-[#53565A]">{metaLine}</span>
                       </div>
                       <button
@@ -2466,14 +2520,16 @@ function App() {
                         </button>
                       </div>
                     )}
-                    <div className="flex justify-end px-4 pb-4">
-                      <button
-                        className="text-[16px] font-medium underline"
-                        onClick={() => openList(list)}
-                      >
-                        View
-                      </button>
-                    </div>
+                    {previewImages.length > 0 && (
+                      <div className="flex justify-end px-4 pb-4">
+                        <button
+                          className="text-[16px] font-medium underline"
+                          onClick={() => openList(list)}
+                        >
+                          View
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -2612,7 +2668,7 @@ function App() {
                       </span>
                     </>
                   ) : (
-                    <span className="whitespace-nowrap">Upload a file</span>
+                    <span className="whitespace-nowrap">Upload an image</span>
                   )}
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadFile(e.target.files?.[0])} />
@@ -2719,13 +2775,13 @@ function App() {
                       <div className="flex flex-col border-t border-[#ddd]">
                         {meal.ingredients.length > 0 && (() => {
                           const allSelected = meal.ingredients.every((i) => i.selected)
-                          const someSelected = !allSelected && meal.ingredients.some((i) => i.selected)
+                          const anySelected = meal.ingredients.some((i) => i.selected)
                           return (
                             <div className="flex items-center self-stretch bg-white px-4 py-3 md:px-4">
                               <button
                                 type="button"
                                 role="checkbox"
-                                aria-checked={allSelected ? true : someSelected ? 'mixed' : false}
+                                aria-checked={anySelected}
                                 aria-label={`Select all ingredients in ${meal.title}`}
                                 onClick={() => {
                                   const next = !allSelected
@@ -2743,10 +2799,10 @@ function App() {
                                 className="flex w-full items-center gap-4 rounded-sm text-left focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
                               >
                                 <span
-                                  className={`flex size-5 shrink-0 items-center justify-center border border-[#333] p-0.5 ${allSelected ? 'bg-[#333]' : 'bg-white'}`}
+                                  className={`flex size-5 shrink-0 items-center justify-center border border-[#333] p-0.5 ${anySelected ? 'bg-[#333]' : 'bg-white'}`}
                                   aria-hidden="true"
                                 >
-                                  {allSelected ? (
+                                  {anySelected ? (
                                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                                       <path
                                         d="M3.5 8.2 6.4 11 12.5 4.9"
@@ -2756,8 +2812,6 @@ function App() {
                                         strokeLinejoin="round"
                                       />
                                     </svg>
-                                  ) : someSelected ? (
-                                    <span className="block h-[2px] w-3 bg-[#333]" />
                                   ) : null}
                                 </span>
                                 <span className="min-w-0 flex-1 text-[16px] font-medium leading-6 text-[#333]">
