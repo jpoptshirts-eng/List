@@ -1323,7 +1323,6 @@ function App() {
       setInputValueState(next)
     }
   }
-  const [inputFocused, setInputFocused] = useState(false)
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [showPreferences, setShowPreferences] = useState(false)
   const [toast, setToast] = useState('')
@@ -2469,32 +2468,32 @@ function App() {
               Shopping Lists
             </div>
             <div className="mx-auto flex w-full max-w-[768px] flex-wrap gap-6 items-start">
-              {/* Create a list tile */}
-              <div className="flex w-full shrink-0 items-center justify-center border border-dashed border-[#a9a9a9] bg-white p-6 sm:w-[343px] sm:min-h-[184px]">
+              {/* Create a list tile (Figma List card) */}
+              <div className="flex w-full max-w-[382.333px] shrink-0 items-start border border-[#ddd] bg-white p-6">
                 <form
-                  className="flex w-full flex-col gap-3"
+                  className="flex w-full flex-wrap items-start content-start gap-5"
                   onSubmit={(e) => { e.preventDefault(); createNewList() }}
                 >
-                  <label className="text-[14px] font-medium text-[#53565A]" htmlFor="new-list-name">
-                    List name
+                  <label className="w-full text-[14px] font-medium text-[#333]" htmlFor="new-list-name">
+                    Enter list name
                   </label>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex w-full flex-col gap-1">
                     <input
                       id="new-list-name"
                       type="text"
                       maxLength={20}
                       value={newListNameInput}
                       onChange={(e) => setNewListNameInput(e.target.value)}
-                      className="w-full border-b border-[#a9a9a9] bg-transparent pb-1 text-[16px] outline-none focus:border-[#154734]"
-                      placeholder=""
+                      className="w-full border-b border-[#a9a9a9] bg-transparent pb-3 text-[16px] outline-none placeholder:text-[#a9a9a9] focus:border-[#154734]"
+                      placeholder="eg weekly shop or Birthday lunch"
                       autoComplete="off"
                     />
-                    <span className="text-right text-[12px] text-[#a9a9a9]">{newListNameInput.length}/20</span>
+                    <span className="text-right text-[12px] text-[#333]">{newListNameInput.length}/20</span>
                   </div>
                   <button
                     type="submit"
                     disabled={!newListNameInput.trim()}
-                    className="mt-1 bg-[#53565A] px-5 py-2 text-[16px] text-white disabled:bg-[#eeeeee] disabled:text-[#a9a9a9]"
+                    className="w-full bg-[#53565A] px-5 py-2 text-[16px] text-white disabled:bg-[#eeeeee] disabled:text-[#a9a9a9]"
                   >
                     Create list
                   </button>
@@ -2644,9 +2643,7 @@ function App() {
                     </svg>
                   </span>
                   {/* Message */}
-                  <p className="flex-1 text-[16px] leading-6 text-[#333]">
-                    Lists are automatically saved every time meals/items are generated
-                  </p>
+                  <p className="flex-1 text-[16px] leading-6 text-[#333]">Your list will be saved when you select 'Build shop'</p>
                   {/* Dismiss */}
                   <button
                     type="button"
@@ -2674,38 +2671,31 @@ function App() {
               void handleBuildShop()
             }}
           >
-            <div className="mb-2 text-[14px] font-medium tracking-[2.8px] text-[#53565A]">TELL US WHAT YOU NEED</div>
+            <div className="mb-2 text-[14px] font-medium tracking-[2.8px] text-[#53565A]">CREATE YOUR LIST</div>
             <label htmlFor="list-input" className="sr-only">
               List input
             </label>
             <div className="relative">
-              {!inputFocused && !inputValue.trim() && (
-                <div className="web-paragraph-heading pointer-events-none absolute left-3 top-3 right-3 whitespace-pre-line">
-                  {helperCopy}
-                </div>
-              )}
               <textarea
                 ref={listInputRef}
                 id="list-input"
                 name="shop-list"
                 autoComplete="off"
-                className={`web-paragraph-heading h-[140px] w-full border bg-[#fafafa] p-3 sm:h-28 sm:leading-7 focus:outline focus:outline-2 focus:outline-[#154734] ${listInputError ? 'border-[#a6192e]' : 'border-[#a9a9a9]'}`}
+                className={`web-paragraph-heading h-[144px] w-full resize-y border bg-[#fafafa] p-3 focus:outline focus:outline-2 focus:outline-[#154734] ${listInputError ? 'border-[#a6192e]' : 'border-[#a9a9a9]'}`}
                 value={inputValue}
-                placeholder=""
+                placeholder={helperCopy}
                 onChange={(e) => {
                   setListInputError('')
                   resultsFromChipRef.current = false
                   setInputValue(e.target.value)
                 }}
                 onFocus={() => {
-                  setInputFocused(true)
                   setListInputError('')
                   // Clear any old helper text that may have been stored as actual input value.
                   if (isLikelyUiPlaceholderList(inputValue)) {
                     setInputValue('')
                   }
                 }}
-                onBlur={() => setInputFocused(false)}
                 aria-invalid={listInputError ? true : undefined}
                 aria-describedby={listInputError ? 'list-input-error' : undefined}
                 aria-label="Build a shop list input"
@@ -2737,7 +2727,7 @@ function App() {
                       </span>
                     </>
                   ) : (
-                    <span className="whitespace-nowrap">Upload an image</span>
+                    <span className="whitespace-nowrap">Upload a list</span>
                   )}
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadFile(e.target.files?.[0])} />
@@ -2749,7 +2739,7 @@ function App() {
                   <span className="shrink-0">
                     <IconPreferences />
                   </span>
-                  <span className="whitespace-nowrap">Filter preferences</span>
+                  <span className="whitespace-nowrap">Filters</span>
                 </button>
               </div>
               <button
@@ -2932,7 +2922,7 @@ function App() {
 
             {hasVisibleEssentials && (
               <section className={hasVisibleMeals ? 'mt-10' : ''}>
-                <h2 className="text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Your essentials</h2>
+                <h2 className="text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Your items</h2>
                 <p className="mb-3 mt-2 text-[16px] font-light leading-6 text-[#53565A]">{essentialsMetaLine}</p>
                 <div className="border border-[#ddd] bg-white">
                   {visibleEssentials.map((item, idx) => (

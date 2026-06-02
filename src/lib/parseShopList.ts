@@ -50,6 +50,13 @@ export function isLikelyUiPlaceholderList(text: string): boolean {
   )
     return true
   if (
+    n.includes('enter a meal or item') &&
+    n.includes('upload an image of a list') &&
+    n.includes('milk') &&
+    n.includes('spag bol')
+  )
+    return true
+  if (
     (n.includes("we'll build your shop") || n.includes('build your shop in seconds')) &&
     n.includes('review and edit')
   )
@@ -76,6 +83,8 @@ function isNoiseListLine(line: string): boolean {
   if (/bread\s*-\s*type/u.test(t)) return true
   if (/we'?ll build your shop/u.test(t)) return true
   if (/review and edit/u.test(t)) return true
+  if (/enter a meal or item/u.test(t)) return true
+  if (/you can also upload an image of a list or paste it/u.test(t)) return true
   if (/need inspiration/u.test(t)) return true
   if (/meals and items below/u.test(t)) return true
   if (/add more by typing/u.test(t)) return true
