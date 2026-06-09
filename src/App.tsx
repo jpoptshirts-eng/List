@@ -110,6 +110,8 @@ function mergeAppendBuildOntoTrolley(
   return Array.from(map.values())
 }
 
+const INSPIRATION_CHIP_COUNT = 6
+
 const defaultInspiration = [
   'Spaghetti Bolognese',
   'Shepherd’s Pie',
@@ -120,19 +122,36 @@ const defaultInspiration = [
   'Lemon drizzle',
 ]
 
-const PERSONALISED_POOL = [
-  'Shepherd’s Pie',
+/** Meal/recipe-only pool used to replace a chip after the user selects one. */
+const MEAL_INSPIRATION_REPLACEMENTS = [
+  ...defaultInspiration,
   'Green Thai Curry',
-  'Spaghetti Bolognese',
   'Chicken Fajitas',
   'Pasta Bake',
   'Tomato Soup',
-  'Greek Yoghurt',
-  'Orange Juice',
-  'Broccoli',
-  'Garlic',
-  'Bananas',
+  'Lentil Dhal',
+  'Vegetable Stir Fry',
+  'Fish Pie',
+  'Lasagne',
+  'Garlic Bread',
+  'Cottage Pie',
+  'Beef Stew',
 ]
+
+function getInitialInspirationSlots(): string[] {
+  return defaultInspiration.slice(0, INSPIRATION_CHIP_COUNT)
+}
+
+function getNextMealInspirationChip(currentSlots: string[], replaced: string): string {
+  const visible = new Set(currentSlots)
+  return (
+    MEAL_INSPIRATION_REPLACEMENTS.find((meal) => meal !== replaced && !visible.has(meal)) ?? replaced
+  )
+}
+
+type RemoveConfirmTarget =
+  | { kind: 'meal'; mealId: string; name: string }
+  | { kind: 'essential'; id: string; name: string }
 
 
 function parseLinesFromOcrText(raw: string): string[] {
@@ -1104,36 +1123,6 @@ function mergeMealGroups(existing: MealGroup[], incoming: MealGroup[]): MealGrou
   return Array.from(byTitle.values())
 }
 
-function derivePersonalisedChips(params: {
-  meals: MealGroup[]
-  essentials: Essential[]
-  dietSelections: DietOption[]
-  rangeSelections: RangeOption[]
-}): string[] {
-  const { meals, essentials, dietSelections, rangeSelections } = params
-  const mealTitles = meals.filter((m) => !m.removed).map((m) => m.title.toLowerCase())
-  const essentialNames = essentials.map((e) => e.name.toLowerCase())
-  const suggestions: string[] = []
-
-  const hasAny = (terms: string[]) =>
-    terms.some(
-      (t) => mealTitles.some((m) => m.includes(t)) || essentialNames.some((e) => e.includes(t)),
-    )
-
-  if (hasAny(['spaghetti', 'pasta'])) suggestions.push('Garlic Bread', 'Pasta Bake')
-  if (hasAny(['curry', 'thai'])) suggestions.push('Green Thai Curry')
-  if (hasAny(['chicken'])) suggestions.push('Chicken Fajitas')
-  if (hasAny(['milk', 'yoghurt'])) suggestions.push('Greek Yoghurt', 'Bananas')
-  if (hasAny(['bread'])) suggestions.push('Tomato Soup')
-  if (hasAny(['orange', 'juice', 'fruit'])) suggestions.push('Broccoli')
-  if (dietSelections.includes('Vegetarian')) suggestions.push('Lentil Dhal', 'Vegetable Stir Fry')
-  if (rangeSelections.includes('Organic')) suggestions.push('Organic Eggs', 'Organic Carrots')
-
-  const ordered = [...suggestions, ...PERSONALISED_POOL]
-  const unique = Array.from(new Set(ordered))
-  return unique.slice(0, 6)
-}
-
 function getCatalogErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message
   return 'Could not load POPMAS. Check Supabase configuration and access.'
@@ -1337,7 +1326,8 @@ function App() {
   const [, setCatalogSourceLabel] = useState('')
   const [listInputError, setListInputError] = useState('')
   const [imageProcessing, setImageProcessing] = useState(false)
-  const [usedInspirationChips, setUsedInspirationChips] = useState<string[]>([])
+  const [inspirationSlots, setInspirationSlots] = useState<string[]>(() => getInitialInspirationSlots())
+  const [removeConfirmTarget, setRemoveConfirmTarget] = useState<RemoveConfirmTarget | null>(null)
   const [chipSnackbarVisible, setChipSnackbarVisible] = useState(false)
   const [removedEssentialName, setRemovedEssentialName] = useState('')
   const [activeInspirationChip, setActiveInspirationChip] = useState<string | null>(null)
@@ -1450,6 +1440,15 @@ function App() {
   }, [showPreferences])
 
   useEffect(() => {
+    if (!removeConfirmTarget) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [removeConfirmTarget])
+
+  useEffect(() => {
     if (!toast) return
     const timeout = window.setTimeout(() => setToast(''), 2200)
     return () => window.clearTimeout(timeout)
@@ -1521,36 +1520,6 @@ function App() {
   }, [generated, imageProcessing, mealGroups, essentials, uploadedFileName])
 
 
-  const hasEnoughSignalsForPersonalisedChips =
-    mealGroups.filter((m) => !m.removed).length + essentials.length >= 4 ||
-    dietSelections.length + rangeSelections.length >= 2
-
-  const inspirationBase = (() => {
-    if (!hasEnoughSignalsForPersonalisedChips) return defaultInspiration
-    return derivePersonalisedChips({
-      meals: mealGroups,
-      essentials,
-      dietSelections,
-      rangeSelections,
-    })
-  })()
-
-  const inspirationPool = Array.from(
-    new Set([
-      ...inspirationBase,
-      ...derivePersonalisedChips({
-        meals: mealGroups,
-        essentials,
-        dietSelections,
-        rangeSelections,
-      }),
-      ...defaultInspiration,
-      ...PERSONALISED_POOL,
-    ]),
-  )
-  const inspirationChips = inspirationPool
-    .filter((chip) => !usedInspirationChips.includes(chip))
-    .slice(0, inspirationBase.length)
   const visibleUploadedFileName = uploadedFileName
 
   const helperCopy = generated
@@ -2077,6 +2046,28 @@ function App() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  function scrollToAddMoreInput() {
+    const input = listInputRef.current
+    const section = document.getElementById('create-list-input')
+    if (!input || !section) return
+
+    const stickyHeader = document.querySelector('[data-sticky-site-header]')
+    const getScrollTop = () => {
+      const headerOffset =
+        stickyHeader instanceof HTMLElement ? stickyHeader.getBoundingClientRect().height : 0
+      return Math.max(0, section.getBoundingClientRect().top + window.scrollY - headerOffset - 16)
+    }
+
+    // Focus synchronously inside the click handler so mobile/tablet keyboards open reliably.
+    input.focus({ preventScroll: true })
+    window.scrollTo({ top: getScrollTop(), behavior: 'smooth' })
+
+    // Re-adjust after scroll/keyboard animation so the input is not hidden under the sticky header.
+    window.setTimeout(() => {
+      window.scrollTo({ top: getScrollTop(), behavior: 'auto' })
+    }, 400)
+  }
+
   function addSuggestionToMeals(tag: string) {
     if (activeInspirationChip) return
     const gen = ++listBuildGenerationRef.current
@@ -2120,7 +2111,9 @@ function App() {
         if (built.meals.length === 0 && built.essentials.length > 0) {
           setChipSnackbarVisible(true)
         }
-        setUsedInspirationChips((prev) => (prev.includes(tag) ? prev : [...prev, tag]))
+        setInspirationSlots((slots) =>
+          slots.map((slot) => (slot === tag ? getNextMealInspirationChip(slots, tag) : slot)),
+        )
       } catch (error) {
         if (gen !== listBuildGenerationRef.current) return
         setGenerated(mealGroups.length > 0 || essentials.length > 0)
@@ -2167,7 +2160,21 @@ function App() {
     setShowMoreEssentials(false)
     setInputValue('')
     setListInputError('')
+    setInspirationSlots(getInitialInspirationSlots())
     setAppView('build')
+  }
+
+  function confirmListItemRemoval() {
+    if (!removeConfirmTarget) return
+    if (removeConfirmTarget.kind === 'meal') {
+      setMealGroups((prev) =>
+        prev.map((m) => (m.id === removeConfirmTarget.mealId ? { ...m, removed: true } : m)),
+      )
+    } else {
+      setRemovedEssentialName(removeConfirmTarget.name)
+      setEssentials((prev) => prev.filter((e) => e.id !== removeConfirmTarget.id))
+    }
+    setRemoveConfirmTarget(null)
   }
 
   function goToIndex() {
@@ -2257,11 +2264,29 @@ function App() {
 
   const bottomSnackbarBarClass =
     'fixed left-1/2 z-40 -translate-x-1/2 bg-[#1f1f1f] px-5 py-3 text-white shadow-[0px_2px_8px_rgba(0,0,0,0.35)]'
-  const suppressStickyHeader = showPreferences || Boolean(swapTarget)
+  const suppressStickyHeader = showPreferences || Boolean(swapTarget) || Boolean(removeConfirmTarget)
+
+  const allEssentialsVisible = !hasVisibleEssentials || hiddenEssentialsCount === 0 || showMoreEssentials
+
+  const addMoreCta = (
+    <div className="mt-2 flex items-center justify-between py-3">
+      <p className="text-[16px] font-medium leading-6 text-[#333]">Need anything else?</p>
+      <button
+        type="button"
+        className="flex h-10 shrink-0 items-center justify-center border border-[#333] bg-white px-5 py-2 text-[16px] font-medium leading-6 text-[#333]"
+        onClick={scrollToAddMoreInput}
+      >
+        Add
+      </button>
+    </div>
+  )
 
   return (
     <main className="app-shell min-h-screen bg-[#fafafa] pb-32 font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]">
-      <div className={suppressStickyHeader ? 'relative z-50 bg-white' : 'sticky top-0 z-50 bg-white'}>
+      <div
+        data-sticky-site-header
+        className={suppressStickyHeader ? 'relative z-50 bg-white' : 'sticky top-0 z-50 bg-white'}
+      >
         <div className="mx-auto hidden max-w-[1260px] lg:block">
           <div className="flex h-10 items-center justify-between px-8 text-[14px] text-[#333]">
             <div className="flex items-center gap-4">
@@ -2662,7 +2687,7 @@ function App() {
               </div>
             )}
 
-        <div className="mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4">
+        <div id="create-list-input" className="mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4">
           <form
             className="block"
             onSubmit={(e) => {
@@ -2778,7 +2803,7 @@ function App() {
         <div className="mx-auto mt-10 w-full max-w-[768px] sm:mt-8">
           <div className="mb-2 text-[14px] tracking-[2.8px]">NEED INSPIRATION?</div>
           <div className="flex flex-wrap gap-2 sm:gap-2">
-            {inspirationChips.map((chip) => (
+            {inspirationSlots.map((chip) => (
               <button
                 key={chip}
                 type="button"
@@ -2824,7 +2849,9 @@ function App() {
                         type="button"
                         className="mt-0.5 inline-flex shrink-0 items-center gap-2 p-0.5 text-[#757575]"
                         aria-label={`Remove ${meal.title}`}
-                        onClick={() => setMealGroups((prev) => prev.map((m) => (m.id === meal.id ? { ...m, removed: true } : m)))}
+                        onClick={() =>
+                          setRemoveConfirmTarget({ kind: 'meal', mealId: meal.id, name: meal.title })
+                        }
                       >
                         <span className="hidden text-[14px] leading-5 text-[#53565A] lg:inline">Remove meal</span>
                         <IconBin />
@@ -2917,6 +2944,7 @@ function App() {
                 )
                   })}
                 </div>
+                {!hasVisibleEssentials && allEssentialsVisible ? addMoreCta : null}
               </>
             )}
 
@@ -2941,15 +2969,14 @@ function App() {
                         }
                         onSwap={() => setSwapTarget({ kind: 'essential', id: item.id, item: { name: item.name, image: item.image, price: item.price, unitPrice: item.unitPrice, productType: item.productType } })}
                         onQtyDelta={(d) => changeEssentialQty(item.id, d)}
-                        onRemove={() => {
-                          setRemovedEssentialName(item.name)
-                          setEssentials((prev) => prev.filter((e) => e.id !== item.id))
-                        }}
+                        onRemove={() =>
+                          setRemoveConfirmTarget({ kind: 'essential', id: item.id, name: item.name })
+                        }
                       />
                     </div>
                   ))}
                 </div>
-                {!showMoreEssentials && hiddenEssentialsCount > 0 && (
+                {!showMoreEssentials && hiddenEssentialsCount > 0 ? (
                   <div className="mt-4 text-center">
                     <button
                       type="button"
@@ -2959,6 +2986,8 @@ function App() {
                       View {hiddenEssentialsCount} more {hiddenEssentialsCount === 1 ? 'item' : 'items'}
                     </button>
                   </div>
+                ) : (
+                  addMoreCta
                 )}
               </section>
             )}
@@ -3015,7 +3044,12 @@ function App() {
                 <span>Estimated total</span>
                 <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#53565A] text-[12px]">?</span>
               </span>
-              <span className="ml-auto lg:ml-2">{formatCurrency(displayTotal)}</span>
+              <span className="ml-auto flex items-center lg:ml-2">
+                <span>{formatCurrency(displayTotal)}</span>
+                {generated && unitsForTrolleyAdd > 0 ? (
+                  <span className="ml-2">({unitsForTrolleyAdd})</span>
+                ) : null}
+              </span>
             </div>
             <div className="flex w-full items-stretch">
               <button
@@ -3040,6 +3074,42 @@ function App() {
           </div>
         </div>
       </footer>
+      )}
+
+      {removeConfirmTarget && (
+        <div
+          className="fixed inset-0 z-30 flex items-center justify-center bg-black/30 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setRemoveConfirmTarget(null)
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-item-dialog-title"
+            className="w-full max-w-[544px] bg-white p-6"
+          >
+            <p id="remove-item-dialog-title" className="text-[16px] leading-6 text-[#333]">
+              This item will be removed from this list
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="border border-[#333] bg-white px-5 py-2 text-[16px] text-[#333]"
+                onClick={() => setRemoveConfirmTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="bg-[#53565A] px-5 py-2 text-[16px] text-white"
+                onClick={confirmListItemRemoval}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showPreferences && (
