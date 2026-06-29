@@ -49,13 +49,8 @@ export function isLikelyUiPlaceholderList(text: string): boolean {
     (n.includes('upload') || n.includes('type') || n.includes('paste') || n.includes('say a list'))
   )
     return true
-  if (
-    n.includes('enter a meal or item') &&
-    n.includes('upload an image of a list') &&
-    n.includes('milk') &&
-    n.includes('spag bol')
-  )
-    return true
+  if (n.includes('enter a meal or item') && n.includes('upload')) return true
+  if (n.includes('enter one item at a time') && n.includes('paste a list')) return true
   if (
     (n.includes("we'll build your shop") || n.includes('build your shop in seconds')) &&
     n.includes('review and edit')

@@ -1,10 +1,22 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { recognize } from 'tesseract.js'
 import { MyTrolleyView, type TrolleyLine } from './components/my-trolley-view'
 import { EssentialProductPod, IconBin, IconChevronMeal, IconPen, RecipeProductPod } from './components/shopping-list-pods'
+import { ProductAutocomplete } from './components/product-autocomplete'
 import { runVisionOcr } from './lib/visionOcr'
 import { bestCatalogMatch, topCatalogMatches } from './lib/catalogMatch'
+import {
+  countDetectedListItems,
+  deriveInputMode,
+  detectPastedMultiItemList,
+  getActiveInputLine,
+  isAmbiguousListLine,
+  shouldShowAutocomplete,
+  type InputMode,
+  type ProductSuggestion,
+} from './lib/inputExperience'
 import { getShopListLinesFromUserInput, isLikelyMealLine, isLikelyUiPlaceholderList } from './lib/parseShopList'
+import { searchAmbiguousOptions, searchProductSuggestions } from './lib/productAutocomplete'
 import {
   SHOP_LIST_HELPER_INITIAL,
 } from './lib/shopInputCopy'
@@ -45,6 +57,9 @@ type Essential = {
   selected: boolean
   image: string
   productType?: string
+  originalText?: string
+  needsReview?: boolean
+  matchHint?: 'best-match' | 'needs-review'
 }
 
 type SavedList = {
@@ -1019,13 +1034,39 @@ function buildShopFromListLines(
       })
     } else {
       const id = `ess-list-${ei++}`
+      if (isAmbiguousListLine(trimmed)) {
+        essentials.push({
+          id,
+          name: trimmed,
+          originalText: trimmed,
+          needsReview: true,
+          matchHint: 'needs-review',
+          price: 0,
+          unitPrice: '—',
+          qty: 1,
+          selected: false,
+          image: '🛒',
+        })
+        continue
+      }
       const resolved = essentialFromCatalogMatch(
         { id, label: trimmed, match: trimmed },
         primaryProducts,
         fallbackProducts,
       )
       if (resolved.usedFallback) fallbackMatches += 1
-      essentials.push(resolved.item)
+      const item = resolved.item
+      if (item.price > 0 || item.image !== '🛒') {
+        essentials.push({ ...item, matchHint: 'best-match' })
+      } else {
+        essentials.push({
+          ...item,
+          originalText: trimmed,
+          needsReview: true,
+          matchHint: 'needs-review',
+          selected: false,
+        })
+      }
     }
   }
   // Deduplicate within this build before merging into existing state.
@@ -1322,10 +1363,16 @@ function App() {
   const [swapAlts, setSwapAlts] = useState<WaitroseCatalogItem[]>([])
   const [swapAltsLoading, setSwapAltsLoading] = useState(false)
   const swapCatalogRef = useRef<WaitroseCatalogItem[] | null>(null)
+  const autocompleteCatalogRef = useRef<WaitroseCatalogItem[] | null>(null)
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [, setCatalogSourceLabel] = useState('')
   const [listInputError, setListInputError] = useState('')
   const [imageProcessing, setImageProcessing] = useState(false)
+  const [forceMultiItemMode, setForceMultiItemMode] = useState(false)
+  const [uploadReviewPending, setUploadReviewPending] = useState(false)
+  const [autocompleteOpen, setAutocompleteOpen] = useState(false)
+  const [autocompleteHighlight, setAutocompleteHighlight] = useState(-1)
+  const [viewAllQuery, setViewAllQuery] = useState<string | null>(null)
   const [inspirationSlots, setInspirationSlots] = useState<string[]>(() => getInitialInspirationSlots())
   const [removeConfirmTarget, setRemoveConfirmTarget] = useState<RemoveConfirmTarget | null>(null)
   const [chipSnackbarVisible, setChipSnackbarVisible] = useState(false)
@@ -1487,6 +1534,32 @@ function App() {
   }, [appView])
 
   useEffect(() => {
+    if (appView !== 'build') return
+    if (autocompleteCatalogRef.current) return
+    void loadCatalogForBuildShop()
+      .then((payload) => {
+        autocompleteCatalogRef.current = payload.primary.products
+        if (!swapCatalogRef.current) swapCatalogRef.current = payload.primary.products
+      })
+      .catch(() => {
+        autocompleteCatalogRef.current = []
+      })
+  }, [appView])
+
+  useEffect(() => {
+    if (!autocompleteOpen) return
+    const onPointerDown = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (listInputRef.current?.contains(target)) return
+      if (document.querySelector('[data-product-autocomplete-panel]')?.contains(target)) return
+      setAutocompleteOpen(false)
+      setAutocompleteHighlight(-1)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [autocompleteOpen])
+
+  useEffect(() => {
     if (!generated) return
     // Read the live textarea value to avoid a one-frame state lag
     // that can clear freshly built results.
@@ -1582,6 +1655,9 @@ function App() {
 
   async function handleBuildShop() {
     setListInputError('')
+    setAutocompleteOpen(false)
+    setAutocompleteHighlight(-1)
+    setViewAllQuery(null)
     const rawFromDom = readListTextareaRaw()
     listDraftRef.current = rawFromDom
     if (rawFromDom !== inputValue) setInputValueState(rawFromDom)
@@ -1662,6 +1738,8 @@ function App() {
       }
       // Clear entered list so the post-build helper prompt is visible.
       setInputValue('')
+      setForceMultiItemMode(false)
+      setUploadReviewPending(false)
       resetUploadedFileSelection()
       setCatalogSourceLabel(
         built.fallbackMatches > 0 && payload.fallback
@@ -1872,6 +1950,8 @@ function App() {
           const parsedLines = getShopListLinesFromUserInput(visionLines.join('\n'))
           const extracted = (parsedLines.length > 0 ? parsedLines : visionLines).join('\n')
           setInputValue(extracted)
+          setUploadReviewPending(true)
+          setForceMultiItemMode(true)
           return
         }
 
@@ -2021,6 +2101,8 @@ function App() {
         // Replace textarea with the uploaded image interpretation for user review.
         if (uploadGen !== uploadGenerationRef.current) return
         setInputValue(extracted)
+        setUploadReviewPending(true)
+        setForceMultiItemMode(true)
       } catch {
         if (uploadGen !== uploadGenerationRef.current) return
         setListInputError(
@@ -2039,11 +2121,128 @@ function App() {
     setInputValue('')
     setListInputError('')
     setImageProcessing(false)
+    setUploadReviewPending(false)
+    setForceMultiItemMode(false)
   }
 
   function resetUploadedFileSelection() {
     setUploadedFileName('')
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  function suggestionToEssential(suggestion: ProductSuggestion): Essential {
+    return {
+      id: crypto.randomUUID(),
+      name: suggestion.size ? `${suggestion.title} (${suggestion.size})` : suggestion.title,
+      price: suggestion.price ?? 0,
+      unitPrice: suggestion.unitPrice ?? '—',
+      qty: 1,
+      selected: true,
+      image: suggestion.image,
+      matchHint: 'best-match',
+    }
+  }
+
+  function addProductFromSuggestion(suggestion: ProductSuggestion) {
+    setEssentials((prev) => mergeEssentials(prev, [suggestionToEssential(suggestion)]))
+    setGenerated(true)
+    setInputValue('')
+    setAutocompleteOpen(false)
+    setAutocompleteHighlight(-1)
+    setViewAllQuery(null)
+    setForceMultiItemMode(false)
+    window.setTimeout(() => listInputRef.current?.focus(), 0)
+  }
+
+  function resolveAmbiguousEssential(essentialId: string, suggestion: ProductSuggestion) {
+    const resolved = suggestionToEssential(suggestion)
+    setEssentials((prev) =>
+      prev.map((e) =>
+        e.id === essentialId
+          ? {
+              ...resolved,
+              id: essentialId,
+              selected: true,
+              needsReview: false,
+              originalText: e.originalText,
+            }
+          : e,
+      ),
+    )
+    setGenerated(true)
+  }
+
+  function handleListInputChange(nextValue: string) {
+    setListInputError('')
+    resultsFromChipRef.current = false
+    if (!nextValue.trim()) {
+      setUploadReviewPending(false)
+      setForceMultiItemMode(false)
+    }
+    setInputValue(nextValue)
+
+    const mode = deriveInputMode({
+      text: nextValue,
+      imageProcessing,
+      catalogLoading,
+      uploadReviewPending,
+      generated,
+      forceMultiItem: forceMultiItemMode,
+    })
+
+    if (mode === 'multi-item-entry' || mode === 'processing-upload' || mode === 'building-shop') {
+      setAutocompleteOpen(false)
+      setAutocompleteHighlight(-1)
+      return
+    }
+
+    const activeLine = getActiveInputLine(nextValue)
+    const canShow = shouldShowAutocomplete({
+      text: nextValue,
+      imageProcessing,
+      catalogLoading,
+      forceMultiItem: forceMultiItemMode,
+    })
+    setAutocompleteOpen(canShow && activeLine.length >= 2)
+    setAutocompleteHighlight(-1)
+    if (!canShow) setViewAllQuery(null)
+  }
+
+  function handleListInputPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = e.clipboardData.getData('text')
+    if (!detectPastedMultiItemList(pasted)) return
+    setForceMultiItemMode(true)
+    setAutocompleteOpen(false)
+    setAutocompleteHighlight(-1)
+    setUploadReviewPending(false)
+  }
+
+  function handleListInputKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (!showAutocompletePanel) {
+      if (e.key === 'Escape') {
+        setAutocompleteOpen(false)
+        setAutocompleteHighlight(-1)
+      }
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setAutocompleteHighlight((i) => {
+        const next = i < 0 ? 0 : Math.min(i + 1, autocompleteSuggestions.length - 1)
+        return next
+      })
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setAutocompleteHighlight((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter' && autocompleteHighlight >= 0) {
+      e.preventDefault()
+      const pick = autocompleteSuggestions[autocompleteHighlight]
+      if (pick) addProductFromSuggestion(pick)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setAutocompleteOpen(false)
+      setAutocompleteHighlight(-1)
+    }
   }
 
   function scrollToAddMoreInput() {
@@ -2265,6 +2464,44 @@ function App() {
   const bottomSnackbarBarClass =
     'fixed left-1/2 z-40 -translate-x-1/2 bg-[#1f1f1f] px-5 py-3 text-white shadow-[0px_2px_8px_rgba(0,0,0,0.35)]'
   const suppressStickyHeader = showPreferences || Boolean(swapTarget) || Boolean(removeConfirmTarget)
+
+  const inputMode: InputMode = deriveInputMode({
+    text: inputValue,
+    imageProcessing,
+    catalogLoading,
+    uploadReviewPending,
+    generated,
+    forceMultiItem: forceMultiItemMode,
+  })
+
+  const autocompleteQuery = getActiveInputLine(inputValue)
+  const autocompleteSuggestions = searchProductSuggestions(
+    viewAllQuery ?? autocompleteQuery,
+    autocompleteCatalogRef.current ?? [],
+    viewAllQuery ? 12 : 6,
+  )
+  const showAutocompletePanel =
+    autocompleteOpen &&
+    inputMode === 'single-item-search' &&
+    shouldShowAutocomplete({
+      text: inputValue,
+      imageProcessing,
+      catalogLoading,
+      forceMultiItem: forceMultiItemMode,
+    }) &&
+    autocompleteSuggestions.length > 0
+
+  const detectedItemCount = countDetectedListItems(inputValue)
+  const autocompleteListId = 'product-suggestion-listbox'
+
+  useLayoutEffect(() => {
+    if (appView !== 'build') return
+    const el = listInputRef.current
+    if (!el) return
+    el.style.height = '0px'
+    const maxHeight = 144
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 48), maxHeight)}px`
+  }, [appView, inputValue, helperCopy, showAutocompletePanel, inputMode])
 
   const allEssentialsVisible = !hasVisibleEssentials || hiddenEssentialsCount === 0 || showMoreEssentials
 
@@ -2705,27 +2942,79 @@ function App() {
                 ref={listInputRef}
                 id="list-input"
                 name="shop-list"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={showAutocompletePanel}
+                aria-controls={showAutocompletePanel ? autocompleteListId : undefined}
+                aria-activedescendant={
+                  showAutocompletePanel && autocompleteHighlight >= 0
+                    ? `${autocompleteListId}-option-${autocompleteHighlight}`
+                    : undefined
+                }
                 autoComplete="off"
-                className={`web-paragraph-heading h-[144px] w-full resize-y border bg-[#fafafa] p-3 focus:outline focus:outline-2 focus:outline-[#154734] ${listInputError ? 'border-[#a6192e]' : 'border-[#a9a9a9]'}`}
+                className={`web-paragraph-heading min-h-[48px] max-h-[144px] w-full overflow-y-auto border bg-[#fafafa] p-3 focus:outline focus:outline-2 focus:outline-[#154734] ${showAutocompletePanel ? 'resize-none border-b-0' : 'resize-y'} ${listInputError ? 'border-[#a6192e]' : 'border-[#a9a9a9]'}`}
                 value={inputValue}
                 placeholder={helperCopy}
-                onChange={(e) => {
-                  setListInputError('')
-                  resultsFromChipRef.current = false
-                  setInputValue(e.target.value)
-                }}
+                onChange={(e) => handleListInputChange(e.target.value)}
+                onPaste={handleListInputPaste}
+                onKeyDown={handleListInputKeyDown}
                 onFocus={() => {
                   setListInputError('')
-                  // Clear any old helper text that may have been stored as actual input value.
                   if (isLikelyUiPlaceholderList(inputValue)) {
                     setInputValue('')
                   }
+                  const activeLine = getActiveInputLine(inputValue)
+                  if (
+                    shouldShowAutocomplete({
+                      text: inputValue,
+                      imageProcessing,
+                      catalogLoading,
+                      forceMultiItem: forceMultiItemMode,
+                    }) &&
+                    activeLine.length >= 2
+                  ) {
+                    setAutocompleteOpen(true)
+                  }
                 }}
                 aria-invalid={listInputError ? true : undefined}
-                aria-describedby={listInputError ? 'list-input-error' : undefined}
+                aria-describedby={
+                  [
+                    listInputError ? 'list-input-error' : null,
+                    inputMode === 'multi-item-entry' && detectedItemCount > 0 ? 'list-item-count' : null,
+                    uploadReviewPending ? 'upload-review-hint' : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || undefined
+                }
                 aria-label="Build a shop list input"
               />
+              <ProductAutocomplete
+                query={autocompleteQuery}
+                suggestions={autocompleteSuggestions}
+                highlightedIndex={autocompleteHighlight}
+                open={showAutocompletePanel}
+                onHighlight={setAutocompleteHighlight}
+                onSelect={addProductFromSuggestion}
+                onViewAll={(q) => {
+                  setViewAllQuery(q)
+                  setAutocompleteHighlight(0)
+                }}
+                listId={autocompleteListId}
+              />
             </div>
+            {inputMode === 'multi-item-entry' && detectedItemCount > 0 ? (
+              <p id="list-item-count" className="mt-2 text-[14px] leading-5 text-[#53565A]">
+                {detectedItemCount} item{detectedItemCount === 1 ? '' : 's'} detected
+              </p>
+            ) : null}
+            {uploadReviewPending && inputValue.trim() ? (
+              <p id="upload-review-hint" className="mt-2 text-[14px] leading-5 text-[#53565A]">
+                Review the recognised items below, then select Build shop.
+              </p>
+            ) : null}
+            {imageProcessing ? (
+              <p className="mt-2 text-[14px] leading-5 text-[#53565A]">Reading your list…</p>
+            ) : null}
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -2776,7 +3065,11 @@ function App() {
                   (getShopListLinesFromUserInput(inputValue).length === 0 && !uploadedFileName)
                 }
               >
-                {catalogLoading ? 'Loading…' : imageProcessing ? 'Reading image…' : '✦ Build shop'}
+                {catalogLoading
+                  ? 'Building your draft shop…'
+                  : imageProcessing
+                    ? 'Reading your list…'
+                    : '✦ Build shop'}
               </button>
             </div>
           </form>
@@ -2955,24 +3248,81 @@ function App() {
                 <div className="border border-[#ddd] bg-white">
                   {visibleEssentials.map((item, idx) => (
                     <div key={item.id} className={idx > 0 ? 'border-[#ddd] border-t max-[544px]:border-t-0' : ''}>
-                      <EssentialProductPod
-                        name={item.name}
-                        image={item.image}
-                        price={formatCurrency(item.price)}
-                        unitPrice={item.unitPrice}
-                        qty={item.qty}
-                        selected={item.selected}
-                        onToggleSelected={() =>
-                          setEssentials((prev) =>
-                            prev.map((e) => (e.id === item.id ? { ...e, selected: !e.selected } : e)),
-                          )
-                        }
-                        onSwap={() => setSwapTarget({ kind: 'essential', id: item.id, item: { name: item.name, image: item.image, price: item.price, unitPrice: item.unitPrice, productType: item.productType } })}
-                        onQtyDelta={(d) => changeEssentialQty(item.id, d)}
-                        onRemove={() =>
-                          setRemoveConfirmTarget({ kind: 'essential', id: item.id, name: item.name })
-                        }
-                      />
+                      {item.needsReview ? (
+                        <div className="p-4">
+                          <p className="text-[16px] font-medium leading-6 text-[#333]">
+                            {item.originalText ?? item.name}
+                          </p>
+                          <p className="mt-1 text-[14px] leading-5 text-[#53565A]">Choose a product</p>
+                          <div className="mt-3 flex flex-col gap-2">
+                            {searchAmbiguousOptions(
+                              item.originalText ?? item.name,
+                              autocompleteCatalogRef.current ?? [],
+                            ).map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                className="flex min-h-[44px] items-center gap-3 border border-[#ddd] bg-white px-3 py-2 text-left"
+                                onClick={() => resolveAmbiguousEssential(item.id, option)}
+                              >
+                                <span className="min-w-0 flex-1 text-[16px] leading-6 text-[#333]">
+                                  {option.title}
+                                  {option.size ? ` (${option.size})` : ''}
+                                </span>
+                                {option.price != null ? (
+                                  <span className="shrink-0 text-[16px] leading-6 text-[#333]">
+                                    £{option.price.toFixed(2)}
+                                  </span>
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            className="mt-3 text-[16px] leading-6 text-[#53565A] underline"
+                            onClick={() =>
+                              setRemoveConfirmTarget({
+                                kind: 'essential',
+                                id: item.id,
+                                name: item.originalText ?? item.name,
+                              })
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <EssentialProductPod
+                            name={item.name}
+                            image={item.image}
+                            price={formatCurrency(item.price)}
+                            unitPrice={item.unitPrice}
+                            qty={item.qty}
+                            selected={item.selected}
+                            onToggleSelected={() =>
+                              setEssentials((prev) =>
+                                prev.map((e) => (e.id === item.id ? { ...e, selected: !e.selected } : e)),
+                              )
+                            }
+                            onSwap={() =>
+                              setSwapTarget({
+                                kind: 'essential',
+                                id: item.id,
+                                item: {
+                                  name: item.name,
+                                  image: item.image,
+                                  price: item.price,
+                                  unitPrice: item.unitPrice,
+                                  productType: item.productType,
+                                },
+                              })
+                            }
+                            onQtyDelta={(d) => changeEssentialQty(item.id, d)}
+                            onRemove={() =>
+                              setRemoveConfirmTarget({ kind: 'essential', id: item.id, name: item.name })
+                            }
+                          />
+                      )}
                     </div>
                   ))}
                 </div>

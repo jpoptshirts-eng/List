@@ -1,16 +1,8 @@
 /** Grey helper text shown over an empty list field — single source of truth for UI + “not real list” detection. */
 
-export const SHOP_LIST_HELPER_INITIAL = `Enter a meal or item. You can also upload an image of a list or paste it:
-Milk
-Eggs
-Spag bol
-Kitchen roll`
+export const SHOP_LIST_HELPER_INITIAL = `Enter one item at a time, paste a list or upload a photo`
 
-export const SHOP_LIST_HELPER_INITIAL_ASCII_APOSTROPHE = `Enter a meal or item. You can also upload an image of a list or paste it:
-Milk
-Eggs
-Spag bol
-Kitchen roll`
+export const SHOP_LIST_HELPER_INITIAL_ASCII_APOSTROPHE = `Enter one item at a time, paste a list or upload a photo`
 
 export const SHOP_LIST_HELPER_INSPIRATION_KNOWN = `Need inspiration?
 
