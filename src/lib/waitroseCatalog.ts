@@ -32,6 +32,12 @@ export type EssentialFromCatalog = {
   image: string
 }
 
+/** Resolve a POPMAS imageUrl into a displayable thumbnail value. */
+export function catalogProductImage(imageUrl: string | null | undefined): string {
+  const url = imageUrl?.trim() ?? ''
+  return url.startsWith('http') ? url : '🛒'
+}
+
 const STATIC_CATALOG = '/data/waitrose-groceries.json'
 
 const POPMAS_TABLE = 'POPMAS'
@@ -203,6 +209,6 @@ export function mapWaitroseCatalogToEssentials(
     unitPrice: p.unitPrice?.trim() || '—',
     qty: 1,
     selected: true,
-    image: p.imageUrl?.startsWith('http') ? p.imageUrl : '🛒',
+    image: catalogProductImage(p.imageUrl),
   }))
 }

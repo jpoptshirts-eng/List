@@ -123,19 +123,27 @@ export function QuantityNumerator({
 }
 
 function ProductThumb({ label, className }: { label: string; className?: string }) {
-  const isUrl = /^https?:\/\//i.test(label)
-  const isEmoji = !isUrl && label.length <= 8 && /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(label)
+  const [imageFailed, setImageFailed] = useState(false)
+  const display = imageFailed ? '🛒' : label
+  const isUrl = !imageFailed && /^https?:\/\//i.test(display)
+  const isEmoji = !isUrl && display.length <= 8 && /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(display)
   const base = className ?? 'relative size-9 shrink-0 overflow-hidden bg-[#fafafa] md:size-10'
   return (
     <div className={base}>
       {isUrl ? (
-        <img src={label} alt="" className="size-full object-cover" loading="lazy" />
+        <img
+          src={display}
+          alt=""
+          className="size-full object-cover"
+          loading="lazy"
+          onError={() => setImageFailed(true)}
+        />
       ) : isEmoji ? (
         <span className="flex size-full items-center justify-center text-[22px] leading-none" aria-hidden>
-          {label}
+          {display}
         </span>
       ) : (
-        <span className="flex size-full items-center justify-center text-center text-[10px] text-[#757575]">{label}</span>
+        <span className="flex size-full items-center justify-center text-center text-[10px] text-[#757575]">{display}</span>
       )}
     </div>
   )

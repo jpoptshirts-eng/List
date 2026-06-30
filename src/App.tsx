@@ -6,21 +6,20 @@ import { ProductAutocomplete } from './components/product-autocomplete'
 import { runVisionOcr } from './lib/visionOcr'
 import { bestCatalogMatch, topCatalogMatches } from './lib/catalogMatch'
 import {
-  countDetectedListItems,
   deriveInputMode,
   detectPastedMultiItemList,
   getActiveInputLine,
-  isAmbiguousListLine,
   shouldShowAutocomplete,
   type InputMode,
   type ProductSuggestion,
 } from './lib/inputExperience'
+import { lineMatchesManualEssential, rankProductsForEntry } from './lib/listEntryPrediction'
 import { getShopListLinesFromUserInput, isLikelyMealLine, isLikelyUiPlaceholderList } from './lib/parseShopList'
-import { searchAmbiguousOptions, searchProductSuggestions } from './lib/productAutocomplete'
+import { searchProductSuggestions, enrichSuggestionFromCatalog } from './lib/productAutocomplete'
 import {
   SHOP_LIST_HELPER_INITIAL,
 } from './lib/shopInputCopy'
-import { loadCatalogForBuildShop, type WaitroseCatalogItem } from './lib/waitroseCatalog'
+import { loadCatalogForBuildShop, catalogProductImage, type WaitroseCatalogItem } from './lib/waitroseCatalog'
 
 type DietOption = 'Vegetarian' | 'Vegan' | 'Gluten free' | 'Pescatarian'
 type RangeOption = 'No 1 Range' | 'Essentials' | 'Organic'
@@ -58,8 +57,8 @@ type Essential = {
   image: string
   productType?: string
   originalText?: string
-  needsReview?: boolean
-  matchHint?: 'best-match' | 'needs-review'
+  selectedProductId?: string
+  manuallySelected?: boolean
 }
 
 type SavedList = {
@@ -70,7 +69,14 @@ type SavedList = {
   generated: boolean
 }
 
-type SwapItem = { name: string; image: string; price: number; unitPrice: string; productType?: string }
+type SwapItem = {
+  name: string
+  image: string
+  price: number
+  unitPrice: string
+  productType?: string
+  intentQuery?: string
+}
 type SwapTarget =
   | { kind: 'meal'; mealId: string; ingredientId: string; item: SwapItem }
   | { kind: 'essential'; id: string; item: SwapItem }
@@ -622,8 +628,7 @@ function buildConsensusOcrText(
 
 
 function ingredientThumb(hit: WaitroseCatalogItem | null): string {
-  if (hit?.imageUrl?.startsWith('http')) return hit.imageUrl
-  return '🛒'
+  return catalogProductImage(hit?.imageUrl)
 }
 
 function constrainProductsForQuery(
@@ -961,6 +966,36 @@ function mealTemplateIngredients(mealTitle: string): Array<{ label: string; matc
   ]
 }
 
+function predictEssentialForLine(
+  id: string,
+  label: string,
+  primaryProducts: WaitroseCatalogItem[],
+  fallbackProducts: WaitroseCatalogItem[],
+  dietSelections: DietOption[],
+): { item: Essential; usedFallback: boolean } {
+  const prediction = rankProductsForEntry(label, primaryProducts, fallbackProducts, {
+    preferVegetarian: dietSelections.includes('Vegetarian'),
+  })
+  if (prediction) {
+    return {
+      usedFallback: prediction.usedFallback,
+      item: {
+        id,
+        name: prediction.name,
+        price: prediction.price,
+        unitPrice: prediction.unitPrice,
+        qty: 1,
+        selected: true,
+        image: prediction.image,
+        productType: prediction.productType,
+        originalText: label,
+        selectedProductId: prediction.selectedProductId,
+      },
+    }
+  }
+  return essentialFromCatalogMatch({ id, label, match: label }, primaryProducts, fallbackProducts)
+}
+
 /** Build meals + essentials only from parsed list lines matched against POPMAS (no full-catalog dump). */
 function buildShopFromListLines(
   lines: string[],
@@ -1034,39 +1069,15 @@ function buildShopFromListLines(
       })
     } else {
       const id = `ess-list-${ei++}`
-      if (isAmbiguousListLine(trimmed)) {
-        essentials.push({
-          id,
-          name: trimmed,
-          originalText: trimmed,
-          needsReview: true,
-          matchHint: 'needs-review',
-          price: 0,
-          unitPrice: '—',
-          qty: 1,
-          selected: false,
-          image: '🛒',
-        })
-        continue
-      }
-      const resolved = essentialFromCatalogMatch(
-        { id, label: trimmed, match: trimmed },
+      const resolved = predictEssentialForLine(
+        id,
+        trimmed,
         primaryProducts,
         fallbackProducts,
+        dietSelections,
       )
       if (resolved.usedFallback) fallbackMatches += 1
-      const item = resolved.item
-      if (item.price > 0 || item.image !== '🛒') {
-        essentials.push({ ...item, matchHint: 'best-match' })
-      } else {
-        essentials.push({
-          ...item,
-          originalText: trimmed,
-          needsReview: true,
-          matchHint: 'needs-review',
-          selected: false,
-        })
-      }
+      essentials.push(resolved.item)
     }
   }
   // Deduplicate within this build before merging into existing state.
@@ -1363,7 +1374,7 @@ function App() {
   const [swapAlts, setSwapAlts] = useState<WaitroseCatalogItem[]>([])
   const [swapAltsLoading, setSwapAltsLoading] = useState(false)
   const swapCatalogRef = useRef<WaitroseCatalogItem[] | null>(null)
-  const autocompleteCatalogRef = useRef<WaitroseCatalogItem[] | null>(null)
+  const [autocompleteCatalog, setAutocompleteCatalog] = useState<WaitroseCatalogItem[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [, setCatalogSourceLabel] = useState('')
   const [listInputError, setListInputError] = useState('')
@@ -1436,9 +1447,10 @@ function App() {
       return
     }
     if (swapCatalogRef.current) {
+      const query = swapTarget.item.intentQuery ?? swapTarget.item.name
       setSwapAlts(
         topCatalogMatches(
-          swapTarget.item.name,
+          query,
           swapCatalogRef.current,
           4,
           swapTarget.item.name,
@@ -1451,9 +1463,10 @@ function App() {
     void loadCatalogForBuildShop()
       .then((payload) => {
         swapCatalogRef.current = payload.primary.products
+        const query = swapTarget.item.intentQuery ?? swapTarget.item.name
         setSwapAlts(
           topCatalogMatches(
-            swapTarget.item.name,
+            query,
             payload.primary.products,
             4,
             swapTarget.item.name,
@@ -1535,16 +1548,16 @@ function App() {
 
   useEffect(() => {
     if (appView !== 'build') return
-    if (autocompleteCatalogRef.current) return
+    if (autocompleteCatalog.length > 0) return
     void loadCatalogForBuildShop()
       .then((payload) => {
-        autocompleteCatalogRef.current = payload.primary.products
+        setAutocompleteCatalog(payload.primary.products)
         if (!swapCatalogRef.current) swapCatalogRef.current = payload.primary.products
       })
       .catch(() => {
-        autocompleteCatalogRef.current = []
+        setAutocompleteCatalog([])
       })
-  }, [appView])
+  }, [appView, autocompleteCatalog.length])
 
   useEffect(() => {
     if (!autocompleteOpen) return
@@ -1707,8 +1720,11 @@ function App() {
       if (gen !== listBuildGenerationRef.current) return
 
       const serves = household ?? 'Serves 4'
+      const linesToPredict = lines.filter(
+        (line) => !essentials.some((e) => lineMatchesManualEssential(e, line)),
+      )
       const built = buildShopFromListLines(
-        lines,
+        linesToPredict,
         payload.primary.products,
         payload.fallback?.products ?? [],
         serves,
@@ -1716,7 +1732,7 @@ function App() {
         itemsOnly,
       )
 
-      if (!builtShopHasRows(built)) {
+      if (!builtShopHasRows(built) && linesToPredict.length > 0) {
         setListInputError('No new items were found in POPMAS for this update.')
         return
       }
@@ -1809,7 +1825,7 @@ function App() {
                         name: choice.name,
                         price: choice.price,
                         unitPrice: choice.unitPrice,
-                        image: choice.imageUrl,
+                        image: catalogProductImage(choice.imageUrl),
                         productType: choice.productType,
                       },
                 ),
@@ -1826,7 +1842,7 @@ function App() {
                 name: choice.name,
                 price: choice.price,
                 unitPrice: choice.unitPrice,
-                image: choice.imageUrl,
+                image: catalogProductImage(choice.imageUrl),
                 productType: choice.productType,
               },
         ),
@@ -2130,21 +2146,25 @@ function App() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  function suggestionToEssential(suggestion: ProductSuggestion): Essential {
+  function suggestionToEssential(suggestion: ProductSuggestion, originalText: string): Essential {
+    const enriched = enrichSuggestionFromCatalog(suggestion, autocompleteCatalog, originalText)
     return {
       id: crypto.randomUUID(),
-      name: suggestion.size ? `${suggestion.title} (${suggestion.size})` : suggestion.title,
-      price: suggestion.price ?? 0,
-      unitPrice: suggestion.unitPrice ?? '—',
+      name: enriched.size ? `${enriched.title} (${enriched.size})` : enriched.title,
+      price: enriched.price ?? 0,
+      unitPrice: enriched.unitPrice ?? '—',
       qty: 1,
       selected: true,
-      image: suggestion.image,
-      matchHint: 'best-match',
+      image: enriched.image,
+      originalText,
+      selectedProductId: enriched.id,
+      manuallySelected: true,
     }
   }
 
   function addProductFromSuggestion(suggestion: ProductSuggestion) {
-    setEssentials((prev) => mergeEssentials(prev, [suggestionToEssential(suggestion)]))
+    const originalText = getActiveInputLine(readListTextareaRaw()) || autocompleteQuery
+    setEssentials((prev) => mergeEssentials(prev, [suggestionToEssential(suggestion, originalText)]))
     setGenerated(true)
     setInputValue('')
     setAutocompleteOpen(false)
@@ -2152,24 +2172,6 @@ function App() {
     setViewAllQuery(null)
     setForceMultiItemMode(false)
     window.setTimeout(() => listInputRef.current?.focus(), 0)
-  }
-
-  function resolveAmbiguousEssential(essentialId: string, suggestion: ProductSuggestion) {
-    const resolved = suggestionToEssential(suggestion)
-    setEssentials((prev) =>
-      prev.map((e) =>
-        e.id === essentialId
-          ? {
-              ...resolved,
-              id: essentialId,
-              selected: true,
-              needsReview: false,
-              originalText: e.originalText,
-            }
-          : e,
-      ),
-    )
-    setGenerated(true)
   }
 
   function handleListInputChange(nextValue: string) {
@@ -2203,7 +2205,7 @@ function App() {
       catalogLoading,
       forceMultiItem: forceMultiItemMode,
     })
-    setAutocompleteOpen(canShow && activeLine.length >= 2)
+    setAutocompleteOpen(canShow && activeLine.length >= 1)
     setAutocompleteHighlight(-1)
     if (!canShow) setViewAllQuery(null)
   }
@@ -2477,7 +2479,7 @@ function App() {
   const autocompleteQuery = getActiveInputLine(inputValue)
   const autocompleteSuggestions = searchProductSuggestions(
     viewAllQuery ?? autocompleteQuery,
-    autocompleteCatalogRef.current ?? [],
+    autocompleteCatalog,
     viewAllQuery ? 12 : 6,
   )
   const showAutocompletePanel =
@@ -2491,7 +2493,6 @@ function App() {
     }) &&
     autocompleteSuggestions.length > 0
 
-  const detectedItemCount = countDetectedListItems(inputValue)
   const autocompleteListId = 'product-suggestion-listbox'
 
   useLayoutEffect(() => {
@@ -2971,7 +2972,7 @@ function App() {
                       catalogLoading,
                       forceMultiItem: forceMultiItemMode,
                     }) &&
-                    activeLine.length >= 2
+                    activeLine.length >= 1
                   ) {
                     setAutocompleteOpen(true)
                   }
@@ -2980,7 +2981,6 @@ function App() {
                 aria-describedby={
                   [
                     listInputError ? 'list-input-error' : null,
-                    inputMode === 'multi-item-entry' && detectedItemCount > 0 ? 'list-item-count' : null,
                     uploadReviewPending ? 'upload-review-hint' : null,
                   ]
                     .filter(Boolean)
@@ -3002,11 +3002,6 @@ function App() {
                 listId={autocompleteListId}
               />
             </div>
-            {inputMode === 'multi-item-entry' && detectedItemCount > 0 ? (
-              <p id="list-item-count" className="mt-2 text-[14px] leading-5 text-[#53565A]">
-                {detectedItemCount} item{detectedItemCount === 1 ? '' : 's'} detected
-              </p>
-            ) : null}
             {uploadReviewPending && inputValue.trim() ? (
               <p id="upload-review-hint" className="mt-2 text-[14px] leading-5 text-[#53565A]">
                 Review the recognised items below, then select Build shop.
@@ -3248,81 +3243,37 @@ function App() {
                 <div className="border border-[#ddd] bg-white">
                   {visibleEssentials.map((item, idx) => (
                     <div key={item.id} className={idx > 0 ? 'border-[#ddd] border-t max-[544px]:border-t-0' : ''}>
-                      {item.needsReview ? (
-                        <div className="p-4">
-                          <p className="text-[16px] font-medium leading-6 text-[#333]">
-                            {item.originalText ?? item.name}
-                          </p>
-                          <p className="mt-1 text-[14px] leading-5 text-[#53565A]">Choose a product</p>
-                          <div className="mt-3 flex flex-col gap-2">
-                            {searchAmbiguousOptions(
-                              item.originalText ?? item.name,
-                              autocompleteCatalogRef.current ?? [],
-                            ).map((option) => (
-                              <button
-                                key={option.id}
-                                type="button"
-                                className="flex min-h-[44px] items-center gap-3 border border-[#ddd] bg-white px-3 py-2 text-left"
-                                onClick={() => resolveAmbiguousEssential(item.id, option)}
-                              >
-                                <span className="min-w-0 flex-1 text-[16px] leading-6 text-[#333]">
-                                  {option.title}
-                                  {option.size ? ` (${option.size})` : ''}
-                                </span>
-                                {option.price != null ? (
-                                  <span className="shrink-0 text-[16px] leading-6 text-[#333]">
-                                    £{option.price.toFixed(2)}
-                                  </span>
-                                ) : null}
-                              </button>
-                            ))}
-                          </div>
-                          <button
-                            type="button"
-                            className="mt-3 text-[16px] leading-6 text-[#53565A] underline"
-                            onClick={() =>
-                              setRemoveConfirmTarget({
-                                kind: 'essential',
-                                id: item.id,
-                                name: item.originalText ?? item.name,
-                              })
-                            }
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ) : (
-                        <EssentialProductPod
-                            name={item.name}
-                            image={item.image}
-                            price={formatCurrency(item.price)}
-                            unitPrice={item.unitPrice}
-                            qty={item.qty}
-                            selected={item.selected}
-                            onToggleSelected={() =>
-                              setEssentials((prev) =>
-                                prev.map((e) => (e.id === item.id ? { ...e, selected: !e.selected } : e)),
-                              )
-                            }
-                            onSwap={() =>
-                              setSwapTarget({
-                                kind: 'essential',
-                                id: item.id,
-                                item: {
-                                  name: item.name,
-                                  image: item.image,
-                                  price: item.price,
-                                  unitPrice: item.unitPrice,
-                                  productType: item.productType,
-                                },
-                              })
-                            }
-                            onQtyDelta={(d) => changeEssentialQty(item.id, d)}
-                            onRemove={() =>
-                              setRemoveConfirmTarget({ kind: 'essential', id: item.id, name: item.name })
-                            }
-                          />
-                      )}
+                      <EssentialProductPod
+                        name={item.name}
+                        image={item.image}
+                        price={formatCurrency(item.price)}
+                        unitPrice={item.unitPrice}
+                        qty={item.qty}
+                        selected={item.selected}
+                        onToggleSelected={() =>
+                          setEssentials((prev) =>
+                            prev.map((e) => (e.id === item.id ? { ...e, selected: !e.selected } : e)),
+                          )
+                        }
+                        onSwap={() =>
+                          setSwapTarget({
+                            kind: 'essential',
+                            id: item.id,
+                            item: {
+                              name: item.name,
+                              image: item.image,
+                              price: item.price,
+                              unitPrice: item.unitPrice,
+                              productType: item.productType,
+                              intentQuery: item.originalText || item.name,
+                            },
+                          })
+                        }
+                        onQtyDelta={(d) => changeEssentialQty(item.id, d)}
+                        onRemove={() =>
+                          setRemoveConfirmTarget({ kind: 'essential', id: item.id, name: item.name })
+                        }
+                      />
                     </div>
                   ))}
                 </div>

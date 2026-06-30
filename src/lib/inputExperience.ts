@@ -1,4 +1,4 @@
-import { getShopListLinesFromUserInput, isLikelyUiPlaceholderList } from './parseShopList'
+import { isLikelyUiPlaceholderList } from './parseShopList'
 
 export type InputMode =
   | 'idle'
@@ -63,15 +63,6 @@ export function getActiveInputLine(text: string): string {
   return (lines[lines.length - 1] ?? '').trim()
 }
 
-export function countDetectedListItems(text: string): number {
-  const parsed = getShopListLinesFromUserInput(text)
-  if (parsed.length > 0) return parsed.length
-  return text
-    .split(/[\n,;]+/u)
-    .map((s) => s.trim())
-    .filter((s) => s.length >= 2 && /[\p{L}\p{N}]/u.test(s)).length
-}
-
 export function detectPastedMultiItemList(pastedText: string): boolean {
   const raw = pastedText.trim()
   if (!raw) return false
@@ -107,7 +98,7 @@ export function shouldShowAutocomplete(params: {
   const commaParts = activeLine.split(',').map((s) => s.trim()).filter(Boolean)
   if (commaParts.length >= 3) return false
 
-  return activeLine.length >= 2
+  return activeLine.length >= 1
 }
 
 export function deriveInputMode(params: {
