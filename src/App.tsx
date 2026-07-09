@@ -67,6 +67,8 @@ type SavedList = {
   mealGroups: MealGroup[]
   essentials: Essential[]
   generated: boolean
+  /** Set when the customer leaves this list via the index; reopening starts collapsed. */
+  hasLeftAndReturned?: boolean
 }
 
 type SwapItem = {
@@ -1402,6 +1404,8 @@ function App() {
   const [appView, setAppView] = useState<AppView>('index')
   const [savedLists, setSavedLists] = useState<SavedList[]>([])
   const [activeListId, setActiveListId] = useState<string | null>(null)
+  const [isReturningToList, setIsReturningToList] = useState(false)
+  const [addItemPanelExpanded, setAddItemPanelExpanded] = useState(true)
   const [listName, setListName] = useState('')
   const [newListNameInput, setNewListNameInput] = useState('')
   const [editingListId, setEditingListId] = useState<string | null>(null)
@@ -2247,26 +2251,39 @@ function App() {
     }
   }
 
-  function scrollToAddMoreInput() {
-    const input = listInputRef.current
-    const section = document.getElementById('create-list-input')
-    if (!input || !section) return
+  function expandAddItemPanel() {
+    setAddItemPanelExpanded(true)
+    window.setTimeout(() => listInputRef.current?.focus(), 0)
+  }
 
-    const stickyHeader = document.querySelector('[data-sticky-site-header]')
-    const getScrollTop = () => {
-      const headerOffset =
-        stickyHeader instanceof HTMLElement ? stickyHeader.getBoundingClientRect().height : 0
-      return Math.max(0, section.getBoundingClientRect().top + window.scrollY - headerOffset - 16)
+  function scrollToAddMoreInput() {
+    const run = () => {
+      const input = listInputRef.current
+      const section = document.getElementById('create-list-input')
+      if (!input || !section) return
+
+      const stickyHeader = document.querySelector('[data-sticky-site-header]')
+      const getScrollTop = () => {
+        const headerOffset =
+          stickyHeader instanceof HTMLElement ? stickyHeader.getBoundingClientRect().height : 0
+        return Math.max(0, section.getBoundingClientRect().top + window.scrollY - headerOffset - 16)
+      }
+
+      input.focus({ preventScroll: true })
+      window.scrollTo({ top: getScrollTop(), behavior: 'smooth' })
+
+      window.setTimeout(() => {
+        window.scrollTo({ top: getScrollTop(), behavior: 'auto' })
+      }, 400)
     }
 
-    // Focus synchronously inside the click handler so mobile/tablet keyboards open reliably.
-    input.focus({ preventScroll: true })
-    window.scrollTo({ top: getScrollTop(), behavior: 'smooth' })
+    if (!addItemPanelExpanded) {
+      setAddItemPanelExpanded(true)
+      window.setTimeout(run, 0)
+      return
+    }
 
-    // Re-adjust after scroll/keyboard animation so the input is not hidden under the sticky header.
-    window.setTimeout(() => {
-      window.scrollTo({ top: getScrollTop(), behavior: 'auto' })
-    }, 400)
+    run()
   }
 
   function addSuggestionToMeals(tag: string) {
@@ -2338,6 +2355,7 @@ function App() {
       mealGroups: [],
       essentials: [],
       generated: false,
+      hasLeftAndReturned: false,
     }
     setSavedLists((prev) => [...prev, newList])
     setNewListNameInput('')
@@ -2353,11 +2371,14 @@ function App() {
         ),
       )
     }
+    const returning = Boolean(list.hasLeftAndReturned)
     setActiveListId(list.id)
     setListName(list.name)
     setMealGroups(list.mealGroups)
     setEssentials(list.essentials)
     setGenerated(list.generated)
+    setIsReturningToList(returning)
+    setAddItemPanelExpanded(!returning)
     setShowMoreEssentials(false)
     setInputValue('')
     setListInputError('')
@@ -2383,7 +2404,9 @@ function App() {
     if (activeListId) {
       setSavedLists((prev) =>
         prev.map((l) =>
-          l.id === activeListId ? { ...l, mealGroups, essentials, generated } : l,
+          l.id === activeListId
+            ? { ...l, mealGroups, essentials, generated, hasLeftAndReturned: true }
+            : l,
         ),
       )
     }
@@ -2493,6 +2516,7 @@ function App() {
     }) &&
     autocompleteSuggestions.length > 0
 
+  const addPanelTitle = generated || isReturningToList ? 'ADD TO YOUR LIST' : 'CREATE YOUR LIST'
   const autocompleteListId = 'product-suggestion-listbox'
 
   useLayoutEffect(() => {
@@ -2891,7 +2915,7 @@ function App() {
             </div>
 
             {/* Auto-save info banner — shown once per user until dismissed */}
-            {showAutoSaveBanner && (
+            {addItemPanelExpanded && showAutoSaveBanner && (
               <div className="mx-auto mb-4 w-full max-w-[768px] flex items-stretch bg-[#e5f1fc]">
                 {/* Blue left accent bar */}
                 <div className="w-[4px] shrink-0 bg-[#0074e8]" />
@@ -2925,6 +2949,19 @@ function App() {
               </div>
             )}
 
+            {!addItemPanelExpanded ? (
+              <div className="mx-auto mb-6 flex w-full max-w-[768px] items-center justify-center gap-4">
+                <p className="text-[16px] font-medium leading-6 text-[#333]">Need anything else?</p>
+                <button
+                  type="button"
+                  className="flex h-10 shrink-0 items-center justify-center border border-[#333] bg-white px-5 py-2 text-[16px] font-medium leading-6 text-[#333]"
+                  onClick={expandAddItemPanel}
+                >
+                  Add
+                </button>
+              </div>
+            ) : (
+              <>
         <div id="create-list-input" className="mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4">
           <form
             className="block"
@@ -2934,7 +2971,7 @@ function App() {
               void handleBuildShop()
             }}
           >
-            <div className="mb-2 text-[14px] font-medium tracking-[2.8px] text-[#53565A]">CREATE YOUR LIST</div>
+            <div className="mb-2 text-[14px] font-medium tracking-[2.8px] text-[#53565A]">{addPanelTitle}</div>
             <label htmlFor="list-input" className="sr-only">
               List input
             </label>
@@ -3105,6 +3142,8 @@ function App() {
             ))}
           </div>
         </div>
+              </>
+            )}
 
         {generated && (hasVisibleMeals || hasVisibleEssentials) && (
           <div className="mx-auto mt-10 w-full max-w-[1195px] px-0">
