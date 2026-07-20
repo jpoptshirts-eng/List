@@ -1584,7 +1584,7 @@ function CuisinePicker({
     <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
-        className={`flex min-w-[148px] items-center justify-between gap-3 rounded-xl border-2 bg-white px-3.5 py-2 text-left text-[14px] leading-5 text-[#333] transition-colors focus:outline-none ${
+        className={`flex min-w-[148px] items-center justify-between gap-3 rounded-xl border-2 bg-white px-3.5 py-1.5 text-left text-[14px] leading-5 text-[#333] transition-colors focus:outline-none ${
           open
             ? 'border-[#007AFF] shadow-[0_0_0_3px_rgba(0,122,255,0.15)]'
             : 'border-[#ddd] hover:border-[#a9a9a9]'
