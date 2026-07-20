@@ -1420,6 +1420,25 @@ function getCatalogErrorMessage(error: unknown): string {
   return 'Could not load POPMAS. Check Supabase configuration and access.'
 }
 
+/** Active Build Preferences count from current state (non-default selections only). */
+function countActiveBuildPreferences(
+  dietSelections: DietOption[],
+  rangeSelections: RangeOption[],
+  household: HouseholdOption | null,
+  itemsOnly: boolean,
+): number {
+  // Defaults: no diet, no range, household unset, items-only off.
+  // Diet/Range are multi-select by design — each selected option counts.
+  // Household is single-select — any explicit choice counts as 1.
+  // Items only counts when the customer turns the toggle on.
+  return (
+    dietSelections.length +
+    rangeSelections.length +
+    (household != null ? 1 : 0) +
+    (itemsOnly ? 1 : 0)
+  )
+}
+
 /** Waitrose & Partners 2018 lockup. Set width or height via className/style. */
 function WaitroseLogo({ className = '', title = 'Waitrose & Partners' }: { className?: string; title?: string }) {
   return (
@@ -1765,6 +1784,11 @@ function App() {
   const inspirationSlots = useMemo(
     () => visibleInspirationChips(cuisineSelection, mealGroups),
     [cuisineSelection, mealGroups],
+  )
+
+  const activeBuildPreferencesCount = useMemo(
+    () => countActiveBuildPreferences(dietSelections, rangeSelections, household, itemsOnly),
+    [dietSelections, rangeSelections, household, itemsOnly],
   )
 
   const [appView, setAppView] = useState<AppView>('index')
@@ -3451,13 +3475,16 @@ function App() {
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadFile(e.target.files?.[0])} />
                 <button
                   type="button"
-                  className="flex h-[28px] items-center gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333]"
+                  className="flex h-[28px] max-w-full items-center gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
+                  aria-label={`Build Preferences, ${activeBuildPreferencesCount} selected`}
                   onClick={() => setShowPreferences(true)}
                 >
                   <span className="shrink-0">
                     <IconPreferences />
                   </span>
-                  <span className="whitespace-nowrap">Build Preferences</span>
+                  <span className="min-w-0 truncate whitespace-nowrap">
+                    Build Preferences ({activeBuildPreferencesCount})
+                  </span>
                 </button>
               </div>
               <button
@@ -3497,7 +3524,7 @@ function App() {
           </p>
         </div>
 
-        <div className="mx-auto mt-10 w-full max-w-[768px] sm:mt-8">
+        <div className="mx-auto mt-[60px] w-full max-w-[768px] sm:mt-[52px]">
           <div className="mb-3 flex flex-wrap items-center gap-[8px]">
             <div className="text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Need inspiration?</div>
             <CuisinePicker
