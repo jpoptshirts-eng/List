@@ -8,6 +8,12 @@ export type WaitroseCatalogItem = {
   imageUrl: string
   productUrl: string
   productType?: string
+  /** POPMAS Range (e.g. 'Organic', 'Essentials', 'No 1 Range'). */
+  range?: string
+  /** POPMAS Grouping (optional metadata for future refinement). */
+  grouping?: string
+  /** POPMAS Type (optional metadata for future refinement). */
+  popmasType?: string
 }
 
 export type WaitroseCatalogPayload = {
@@ -66,6 +72,9 @@ type PopMasCatalogRow = {
   Price: string | null
   'Formatted PPU': string | null
   'Product Type': string | null
+  Range?: string | null
+  Grouping?: string | null
+  Type?: string | null
 }
 
 function mapPopMasRowsToProducts(rows: PopMasCatalogRow[]): WaitroseCatalogItem[] {
@@ -82,6 +91,9 @@ function mapPopMasRowsToProducts(rows: PopMasCatalogRow[]): WaitroseCatalogItem[
       imageUrl: row.imageUrl?.trim() || '',
       productUrl: '',
       productType: row['Product Type']?.trim() || undefined,
+      range: row.Range?.trim() || undefined,
+      grouping: row.Grouping?.trim() || undefined,
+      popmasType: row.Type?.trim() || undefined,
     }
   })
 }
@@ -118,7 +130,9 @@ async function loadPopMasCatalog(): Promise<WaitroseCatalogPayload | null> {
     const to = from + pageSize - 1
     const { data, error } = await db
       .from(POPMAS_TABLE)
-      .select('"Order", "imageUrl", "Name", "Size", "Price", "Formatted PPU", "Product Type"')
+        .select(
+          '"Order", "imageUrl", "Name", "Size", "Price", "Formatted PPU", "Product Type", "Range", "Grouping", "Type"',
+        )
       .order('Order', { ascending: true })
       .range(from, to)
 

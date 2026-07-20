@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { recognize } from 'tesseract.js'
 import { MyTrolleyView, type TrolleyLine } from './components/my-trolley-view'
 import { EssentialProductPod, IconBin, IconChevronMeal, IconPen, RecipeProductPod } from './components/shopping-list-pods'
@@ -13,17 +13,33 @@ import {
   type InputMode,
   type ProductSuggestion,
 } from './lib/inputExperience'
-import { lineMatchesManualEssential, rankProductsForEntry } from './lib/listEntryPrediction'
+import { lineMatchesManualEssential, rankCatalogHitsWithPersonalization, rankProductsForEntry } from './lib/listEntryPrediction'
+import {
+  isRecipeCatalogHit,
+  filterSwapAlternatives,
+  resolveSwapIngredientIntent,
+  swapSearchQuery,
+} from './lib/recipeIngredientMatch'
 import { getShopListLinesFromUserInput, isLikelyMealLine, isLikelyUiPlaceholderList } from './lib/parseShopList'
 import { searchProductSuggestions, enrichSuggestionFromCatalog } from './lib/productAutocomplete'
 import {
   SHOP_LIST_HELPER_INITIAL,
 } from './lib/shopInputCopy'
 import { loadCatalogForBuildShop, catalogProductImage, type WaitroseCatalogItem } from './lib/waitroseCatalog'
+import {
+  MEAL_CHIP_ORDER_BY_CUISINE,
+  chipLabelForMeal,
+  methodUrlForMeal,
+  waitroseRecipeMethodUrl,
+  findMealRecipeForLine,
+  type Cuisine,
+  type RecipeIngredient,
+} from './data/mealRecipes'
 
 type DietOption = 'Vegetarian' | 'Vegan' | 'Gluten free' | 'Pescatarian'
 type RangeOption = 'No 1 Range' | 'Essentials' | 'Organic'
 type HouseholdOption = 'Serves 1' | 'Serves 2' | 'Serves 3' | 'Serves 4' | 'Serves 5' | 'Serves 6+'
+type SwapRefinement = 'All' | 'Organic' | 'Vegan' | 'Vegetarian' | 'Gluten-free' | 'Essential' | 'No.1'
 
 type Ingredient = {
   id: string
@@ -35,12 +51,26 @@ type Ingredient = {
   selected: boolean
   image: string
   productType?: string
+  /** Internal: whether this ingredient was matched to a real POPMAS / catalog product. */
+  matched?: boolean
+  /** Internal: set when `matched === false` and a fallback ingredient row was created. */
+  fallbackReason?: 'no-popmas-match'
+  /** Internal: intent text used for matching (helps Swap relevance + debugging). */
+  originalText?: string
+  /** Recipe ingredient intent, e.g. "spaghetti" — used for swap alternatives. */
+  ingredientIntent?: string
 }
 
 type MealGroup = {
   id: string
   title: string
   dietLabel?: string
+  /** Internal: cuisine metadata from the recipe model. */
+  cuisine?: Cuisine
+  /** Internal: inspiration chip label when built from a recipe chip. */
+  chipLabel?: string
+  /** Waitrose recipe method page for this meal. */
+  methodUrl?: string
   serves: string
   removed: boolean
   expanded: boolean
@@ -78,10 +108,70 @@ type SwapItem = {
   unitPrice: string
   productType?: string
   intentQuery?: string
+  ingredientIntent?: string
 }
 type SwapTarget =
   | { kind: 'meal'; mealId: string; ingredientId: string; item: SwapItem }
   | { kind: 'essential'; id: string; item: SwapItem }
+
+function filterPoolBySwapRefinement(
+  products: WaitroseCatalogItem[],
+  refinement: SwapRefinement,
+): WaitroseCatalogItem[] {
+  if (refinement === 'All') return products
+  return products.filter((p) => {
+    const range = (p.range ?? '').toLowerCase()
+    const productType = (p.productType ?? '').toLowerCase()
+    const name = p.name.toLowerCase()
+    switch (refinement) {
+      case 'Organic':
+        return range.includes('organic') || name.includes('organic')
+      case 'Vegan':
+        return productType.includes('vegan') || name.includes('vegan')
+      case 'Vegetarian':
+        return productType.includes('vegetarian') || name.includes('vegetarian')
+      case 'Gluten-free':
+        return (
+          productType.includes('gluten') ||
+          productType.includes('free from') ||
+          name.includes('gluten') ||
+          name.includes('free from') ||
+          name.includes('gluten-free') ||
+          name.includes('gluten free')
+        )
+      case 'Essential':
+        return range.includes('essentials') || name.includes('essentials')
+      case 'No.1':
+        return (
+          range.includes('no 1') ||
+          range.includes('no.1') ||
+          range.includes('no1') ||
+          name.includes('no 1') ||
+          name.includes('no.1') ||
+          name.includes('no1')
+        )
+      default:
+        return true
+    }
+  })
+}
+
+function buildSwapAlternatives(
+  item: SwapItem,
+  pool: WaitroseCatalogItem[],
+  showAll: boolean,
+): { alts: WaitroseCatalogItem[]; poolSize: number } {
+  const intent = resolveSwapIngredientIntent(item.ingredientIntent, item.intentQuery, item.name)
+  const query = swapSearchQuery(intent)
+  const searchLimit = showAll ? pool.length : 60
+  const ordered = topCatalogMatches(query, pool, searchLimit, item.name, item.productType)
+  const suitable = filterSwapAlternatives(intent, ordered)
+  const reranked = rankCatalogHitsWithPersonalization(query, suitable)
+  return {
+    alts: showAll ? reranked : reranked.slice(0, 4),
+    poolSize: suitable.length,
+  }
+}
 
 type AppView = 'index' | 'build' | 'trolley' | 'favourites'
 
@@ -135,41 +225,19 @@ function mergeAppendBuildOntoTrolley(
 
 const INSPIRATION_CHIP_COUNT = 6
 
-const defaultInspiration = [
-  'Spaghetti Bolognese',
-  'Shepherd’s Pie',
-  'Sunday Roast',
-  'Sausage & Mash',
-  'Salmon & veg',
-  'Pancakes',
-  'Lemon drizzle',
-]
-
-/** Meal/recipe-only pool used to replace a chip after the user selects one. */
-const MEAL_INSPIRATION_REPLACEMENTS = [
-  ...defaultInspiration,
-  'Green Thai Curry',
-  'Chicken Fajitas',
-  'Pasta Bake',
-  'Tomato Soup',
-  'Lentil Dhal',
-  'Vegetable Stir Fry',
-  'Fish Pie',
-  'Lasagne',
-  'Garlic Bread',
-  'Cottage Pie',
-  'Beef Stew',
-]
-
-function getInitialInspirationSlots(): string[] {
-  return defaultInspiration.slice(0, INSPIRATION_CHIP_COUNT)
-}
-
-function getNextMealInspirationChip(currentSlots: string[], replaced: string): string {
-  const visible = new Set(currentSlots)
-  return (
-    MEAL_INSPIRATION_REPLACEMENTS.find((meal) => meal !== replaced && !visible.has(meal)) ?? replaced
-  )
+function visibleInspirationChips(
+  cuisine: 'All' | Cuisine,
+  mealGroups: MealGroup[],
+): string[] {
+  const usedChipLabels = new Set<string>()
+  for (const meal of mealGroups) {
+    if (meal.removed) continue
+    const label = chipLabelForMeal(meal)
+    if (label) usedChipLabels.add(label)
+  }
+  return MEAL_CHIP_ORDER_BY_CUISINE[cuisine]
+    .filter((chip) => !usedChipLabels.has(chip))
+    .slice(0, INSPIRATION_CHIP_COUNT)
 }
 
 type RemoveConfirmTarget =
@@ -802,6 +870,106 @@ function mealIngredientFromCatalog(
   }
 }
 
+const DEBUG_MEAL_RECIPE_BUILD = import.meta.env.DEV
+
+function resolveRecipeIngredient(
+  recipeIngredient: RecipeIngredient,
+  primaryProducts: WaitroseCatalogItem[],
+  fallbackProducts: WaitroseCatalogItem[],
+  originalTextForLogging: string,
+  ingredientIndex: number,
+  qtyMultiplier: number,
+): { item: Ingredient; usedFallback: boolean } {
+  const candidateQueries = [...(recipeIngredient.synonyms ?? []), recipeIngredient.name]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+
+  for (const q of candidateQueries) {
+    const catalogPools: Array<{ products: WaitroseCatalogItem[]; usedFallback: boolean }> = [
+      { products: primaryProducts, usedFallback: false },
+      { products: fallbackProducts, usedFallback: true },
+    ]
+
+    for (const { products, usedFallback } of catalogPools) {
+      if (products.length === 0) continue
+
+      const candidates = topCatalogMatches(q, products, 40)
+      const suitable = candidates.filter((hit) => isRecipeCatalogHit(recipeIngredient, hit))
+
+      if (DEBUG_MEAL_RECIPE_BUILD) {
+        console.debug('[meal-build] ingredient candidate', {
+          ingredientIndex,
+          ingredient: recipeIngredient.name,
+          query: q,
+          primaryMatches: candidates.length,
+          suitableMatches: suitable.length,
+          usedFallback,
+        })
+      }
+
+      if (suitable.length === 0) continue
+
+      const ranked = rankCatalogHitsWithPersonalization(q, suitable)
+      const hit = ranked[0]
+      if (!hit) continue
+
+      if (DEBUG_MEAL_RECIPE_BUILD) {
+        console.debug('[meal-build] ingredient matched', {
+          ingredientIndex,
+          ingredient: recipeIngredient.name,
+          query: q,
+          selected: hit.name,
+          usedFallback,
+        })
+      }
+
+      return {
+        usedFallback,
+        item: {
+          id: `recipe-ing-${ingredientIndex}-${crypto.randomUUID()}`,
+          name: hit.name,
+          needText: `You need: ${qtyMultiplier} × of`,
+          price: hit.price,
+          unitPrice: hit.unitPrice?.trim() || '—',
+          qty: qtyMultiplier,
+          selected: true,
+          image: catalogProductImage(hit.imageUrl),
+          productType: hit.productType,
+          matched: true,
+          originalText: originalTextForLogging,
+          ingredientIntent: recipeIngredient.name,
+        },
+      }
+    }
+  }
+
+  // POPMAS had no suitable match: keep the ingredient visible as an unpriced fallback.
+  if (DEBUG_MEAL_RECIPE_BUILD) {
+    console.debug('[meal-build] ingredient fallback', {
+      ingredientIndex,
+      ingredient: recipeIngredient.name,
+      originalTextForLogging,
+    })
+  }
+  return {
+    usedFallback: false,
+    item: {
+      id: `recipe-ing-fallback-${ingredientIndex}-${crypto.randomUUID()}`,
+      name: recipeIngredient.name,
+      needText: `You need: ${qtyMultiplier} × of`,
+      price: 0,
+      unitPrice: '—',
+      qty: qtyMultiplier,
+      selected: true,
+      image: '🛒',
+      matched: false,
+      fallbackReason: 'no-popmas-match',
+      originalText: originalTextForLogging,
+      ingredientIntent: recipeIngredient.name,
+    },
+  }
+}
+
 function normalizeMealName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
 }
@@ -1014,13 +1182,16 @@ function buildShopFromListLines(
   let mi = 0
   let ei = 0
   const dietLabel = dietSelections.includes('Vegetarian') ? 'Vegetarian' : undefined
+  const servesNumber = serves.includes('6+') ? 6 : Number(serves.replace(/\D+/g, '')) || 4
+  const servesMultiplier = Math.max(1, Math.ceil(servesNumber / 4))
 
   for (const label of lines) {
     const trimmed = label.trim()
     if (!trimmed) continue
     const forceMeal = forcedMealLines?.has(normalizeMealName(trimmed)) ?? false
+    const recipeFromLine = findMealRecipeForLine(trimmed)
 
-    if (forceMeal || isLikelyMealLine(trimmed)) {
+    if (forceMeal || isLikelyMealLine(trimmed) || recipeFromLine) {
       if (itemsOnly) {
         const id = `ess-meal-${ei++}`
         const queryCandidates = [
@@ -1049,6 +1220,68 @@ function buildShopFromListLines(
         continue
       }
       const id = `meal-list-${mi++}-${Math.random().toString(36).slice(2, 8)}`
+      if (recipeFromLine) {
+        if (DEBUG_MEAL_RECIPE_BUILD) {
+          console.debug('[meal-build] meal selected', {
+            line: trimmed,
+            fullName: recipeFromLine.fullName,
+            cuisine: recipeFromLine.cuisine,
+          })
+        }
+        // Build from explicit recipe ingredient list.
+        const requiredIngredients = recipeFromLine.ingredients
+        const resolvedIngredients: Ingredient[] = []
+
+        const byKey = new Map<string, Ingredient>()
+        requiredIngredients.forEach((ri, idx) => {
+          const resolved = resolveRecipeIngredient(
+            ri,
+            primaryProducts,
+            fallbackProducts,
+            trimmed,
+            idx,
+            servesMultiplier,
+          )
+          if (resolved.usedFallback) fallbackMatches += 1
+
+          const key = resolved.item.matched
+            ? normKey(resolved.item.name)
+            : `fallback:${normKey(ri.name)}`
+
+          const existing = byKey.get(key)
+          if (existing) {
+            if (DEBUG_MEAL_RECIPE_BUILD) {
+              console.debug('[meal-build] duplicate merged', { meal: recipeFromLine.fullName, key })
+            }
+            const newQty = existing.qty + resolved.item.qty
+            byKey.set(key, {
+              ...existing,
+              qty: newQty,
+              needText: `You need: ${newQty} × of`,
+              selected: newQty > 0,
+            })
+          } else {
+            byKey.set(key, resolved.item)
+          }
+        })
+
+        byKey.forEach((v) => resolvedIngredients.push(v))
+        meals.push({
+          id,
+          title: recipeFromLine.fullName,
+          dietLabel,
+          cuisine: recipeFromLine.cuisine,
+          chipLabel: recipeFromLine.chipLabel,
+          methodUrl: recipeFromLine.methodUrl ?? waitroseRecipeMethodUrl(recipeFromLine.fullName),
+          serves,
+          removed: false,
+          expanded: false,
+          ingredients: resolvedIngredients,
+        })
+        continue
+      }
+
+      // Fallback for legacy meal matching (pre-recipe model).
       const ingredientSpecs = mealTemplateIngredients(trimmed)
       meals.push({
         id,
@@ -1172,7 +1405,12 @@ function mergeMealGroups(existing: MealGroup[], incoming: MealGroup[]): MealGrou
         ingredientMap.set(ingKey, ing)
       }
     }
-    byTitle.set(key, { ...prev, ingredients: Array.from(ingredientMap.values()) })
+    byTitle.set(key, {
+      ...prev,
+      chipLabel: prev.chipLabel ?? next.chipLabel,
+      methodUrl: prev.methodUrl ?? next.methodUrl,
+      ingredients: Array.from(ingredientMap.values()),
+    })
   }
   return Array.from(byTitle.values())
 }
@@ -1289,6 +1527,125 @@ function IconMenu() {
   )
 }
 
+const CUISINE_FILTER_OPTIONS = ['All', 'British', 'Chinese', 'Indian', 'Italian', 'Mexican'] as const
+
+function IconChevronDownSmall({ open }: { open?: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+      className={`shrink-0 text-[#53565A] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+    >
+      <path
+        d="M3.5 5.25 7 8.75l3.5-3.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** Custom dropdown — bordered trigger with popover list (selected row highlight + checkmark). */
+function CuisinePicker({
+  value,
+  onChange,
+  open,
+  onOpenChange,
+}: {
+  value: 'All' | Cuisine
+  onChange: (v: 'All' | Cuisine) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) onOpenChange(false)
+    }
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChange(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, onOpenChange])
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        className={`flex min-w-[148px] items-center justify-between gap-3 rounded-xl border-2 bg-white px-3.5 py-2 text-left text-[14px] leading-5 text-[#333] transition-colors focus:outline-none ${
+          open
+            ? 'border-[#007AFF] shadow-[0_0_0_3px_rgba(0,122,255,0.15)]'
+            : 'border-[#ddd] hover:border-[#a9a9a9]'
+        }`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Cuisine, ${value}. Tap to change.`}
+        onClick={() => onOpenChange(!open)}
+      >
+        <span className="truncate">Cuisine: {value}</span>
+        <IconChevronDownSmall open={open} />
+      </button>
+
+      {open ? (
+        <ul
+          role="listbox"
+          aria-label="Cuisine options"
+          className="absolute left-0 top-[calc(100%+8px)] z-20 max-h-[min(280px,50vh)] min-w-full overflow-y-auto rounded-2xl border border-[#e8e8e8] bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+        >
+          {CUISINE_FILTER_OPTIONS.map((opt) => {
+            const selected = opt === value
+            return (
+              <li key={opt} role="none">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] leading-5 transition-colors ${
+                    selected
+                      ? 'bg-[#EEF4FF] font-medium text-[#007AFF]'
+                      : 'font-normal text-[#53565A] hover:bg-[#fafafa]'
+                  }`}
+                  onClick={() => {
+                    onChange(opt)
+                    onOpenChange(false)
+                  }}
+                >
+                  <span>{opt}</span>
+                  {selected ? (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+                      <path
+                        d="M3.5 8.2 6.4 11 12.5 4.9"
+                        stroke="#007AFF"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : (
+                    <span className="size-4 shrink-0" aria-hidden="true" />
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
 function IconSuccessCheck() {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -1375,6 +1732,9 @@ function App() {
   const [swapTarget, setSwapTarget] = useState<SwapTarget | null>(null)
   const [swapAlts, setSwapAlts] = useState<WaitroseCatalogItem[]>([])
   const [swapAltsLoading, setSwapAltsLoading] = useState(false)
+  const [swapRefinement, setSwapRefinement] = useState<SwapRefinement>('All')
+  const [swapShowAllAlts, setSwapShowAllAlts] = useState(false)
+  const [swapAltPoolSize, setSwapAltPoolSize] = useState(0)
   const swapCatalogRef = useRef<WaitroseCatalogItem[] | null>(null)
   const [autocompleteCatalog, setAutocompleteCatalog] = useState<WaitroseCatalogItem[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
@@ -1386,7 +1746,8 @@ function App() {
   const [autocompleteOpen, setAutocompleteOpen] = useState(false)
   const [autocompleteHighlight, setAutocompleteHighlight] = useState(-1)
   const [viewAllQuery, setViewAllQuery] = useState<string | null>(null)
-  const [inspirationSlots, setInspirationSlots] = useState<string[]>(() => getInitialInspirationSlots())
+  const [cuisineSelection, setCuisineSelection] = useState<'All' | Cuisine>('All')
+  const [cuisinePickerOpen, setCuisinePickerOpen] = useState(false)
   const [removeConfirmTarget, setRemoveConfirmTarget] = useState<RemoveConfirmTarget | null>(null)
   const [chipSnackbarVisible, setChipSnackbarVisible] = useState(false)
   const [removedEssentialName, setRemovedEssentialName] = useState('')
@@ -1400,6 +1761,11 @@ function App() {
 
   const [mealGroups, setMealGroups] = useState<MealGroup[]>([])
   const [essentials, setEssentials] = useState<Essential[]>([])
+
+  const inspirationSlots = useMemo(
+    () => visibleInspirationChips(cuisineSelection, mealGroups),
+    [cuisineSelection, mealGroups],
+  )
 
   const [appView, setAppView] = useState<AppView>('index')
   const [savedLists, setSavedLists] = useState<SavedList[]>([])
@@ -1451,39 +1817,45 @@ function App() {
       return
     }
     if (swapCatalogRef.current) {
-      const query = swapTarget.item.intentQuery ?? swapTarget.item.name
-      setSwapAlts(
-        topCatalogMatches(
-          query,
-          swapCatalogRef.current,
-          4,
-          swapTarget.item.name,
-          swapTarget.item.productType,
-        ),
+      const pool = filterPoolBySwapRefinement(swapCatalogRef.current, swapRefinement)
+      const { alts, poolSize } = buildSwapAlternatives(
+        swapTarget.item,
+        pool,
+        swapShowAllAlts,
       )
+      setSwapAltPoolSize(poolSize)
+      setSwapAlts(alts)
       return
     }
     setSwapAltsLoading(true)
     void loadCatalogForBuildShop()
       .then((payload) => {
         swapCatalogRef.current = payload.primary.products
-        const query = swapTarget.item.intentQuery ?? swapTarget.item.name
-        setSwapAlts(
-          topCatalogMatches(
-            query,
-            payload.primary.products,
-            4,
-            swapTarget.item.name,
-            swapTarget.item.productType,
-          ),
+        const pool = filterPoolBySwapRefinement(payload.primary.products, swapRefinement)
+        const { alts, poolSize } = buildSwapAlternatives(
+          swapTarget.item,
+          pool,
+          swapShowAllAlts,
         )
+        setSwapAltPoolSize(poolSize)
+        setSwapAlts(alts)
         setSwapAltsLoading(false)
       })
-      .catch(() => {
+      .catch((err) => {
+        if (DEBUG_MEAL_RECIPE_BUILD) console.error('[swap] POPMAS error', err)
         setSwapAlts([])
         setSwapAltsLoading(false)
       })
+  }, [swapTarget, swapRefinement, swapShowAllAlts])
+
+  useEffect(() => {
+    if (swapTarget) setSwapRefinement('All')
   }, [swapTarget])
+
+  useEffect(() => {
+    if (!swapTarget) return
+    setSwapShowAllAlts(false)
+  }, [swapTarget, swapRefinement])
 
   useEffect(() => {
     if (!swapTarget) return
@@ -1768,6 +2140,7 @@ function App() {
       )
     } catch (error) {
       if (gen !== listBuildGenerationRef.current) return
+      if (DEBUG_MEAL_RECIPE_BUILD) console.error('[meal-build] POPMAS error', error)
       setGenerated(mealGroups.length > 0 || essentials.length > 0)
       setCatalogSourceLabel('error: POPMAS unavailable')
       setListInputError(getCatalogErrorMessage(error))
@@ -1831,6 +2204,9 @@ function App() {
                         unitPrice: choice.unitPrice,
                         image: catalogProductImage(choice.imageUrl),
                         productType: choice.productType,
+                        matched: true,
+                        fallbackReason: undefined,
+                        ingredientIntent: item.ingredientIntent,
                       },
                 ),
               },
@@ -2288,21 +2664,18 @@ function App() {
 
   function addSuggestionToMeals(tag: string) {
     if (activeInspirationChip) return
+    setListInputError('')
+    resultsFromChipRef.current = true
+    chipSourceLinesRef.current = [tag]
+    setActiveInspirationChip(tag)
+    setShowMoreEssentials(false)
+
+    const serves = household ?? 'Serves 4'
     const gen = ++listBuildGenerationRef.current
     void (async () => {
-      setListInputError('')
-      resultsFromChipRef.current = true
-      chipSourceLinesRef.current = [tag]
-      setActiveInspirationChip(tag)
-      setShowMoreEssentials(false)
-      const serves = household ?? 'Serves 4'
       try {
         const payload = await loadCatalogForBuildShop()
         if (gen !== listBuildGenerationRef.current) return
-        const chipNorm = normalizeMealName(tag)
-        const chipWordCount = chipNorm.split(/\s+/).filter(Boolean).length
-        const singleWordMealChipHints = new Set(['pancakes', 'omelette', 'omelet'])
-        const shouldForceMealForChip = chipWordCount > 1 || singleWordMealChipHints.has(chipNorm)
         const built = buildShopFromListLines(
           [tag],
           payload.primary.products,
@@ -2310,28 +2683,26 @@ function App() {
           serves,
           dietSelections,
           itemsOnly,
-          shouldForceMealForChip ? new Set([chipNorm]) : undefined,
         )
+
         setCatalogSourceLabel(
           built.fallbackMatches > 0 && payload.fallback
             ? `${payload.primary.source} (fallback used for ${built.fallbackMatches} item${built.fallbackMatches === 1 ? '' : 's'}: ${payload.fallback.source})`
             : payload.primary.source,
         )
+
         if (!builtShopHasRows(built)) {
-          setListInputError('That suggestion did not match anything in the product catalog. Try another chip or type a specific item.')
+          setListInputError(
+            'That suggestion did not match anything in the product catalog. Try another chip or type a specific item.',
+          )
           resultsFromChipRef.current = false
           chipSourceLinesRef.current = []
           return
         }
+
         setGenerated(true)
         setMealGroups((prev) => mergeMealGroups(prev, built.meals))
         setEssentials((prev) => mergeEssentials(prev, built.essentials))
-        if (built.meals.length === 0 && built.essentials.length > 0) {
-          setChipSnackbarVisible(true)
-        }
-        setInspirationSlots((slots) =>
-          slots.map((slot) => (slot === tag ? getNextMealInspirationChip(slots, tag) : slot)),
-        )
       } catch (error) {
         if (gen !== listBuildGenerationRef.current) return
         setGenerated(mealGroups.length > 0 || essentials.length > 0)
@@ -2339,7 +2710,9 @@ function App() {
         setListInputError(getCatalogErrorMessage(error))
         setToast('Build shop requires POPMAS. Configure Supabase to continue.')
       } finally {
-        if (gen === listBuildGenerationRef.current) setActiveInspirationChip(null)
+        if (gen === listBuildGenerationRef.current) resultsFromChipRef.current = false
+        setActiveInspirationChip(null)
+        window.setTimeout(() => listInputRef.current?.focus(), 0)
       }
     })()
   }
@@ -2382,7 +2755,6 @@ function App() {
     setShowMoreEssentials(false)
     setInputValue('')
     setListInputError('')
-    setInspirationSlots(getInitialInspirationSlots())
     setAppView('build')
   }
 
@@ -2990,7 +3362,7 @@ function App() {
                     : undefined
                 }
                 autoComplete="off"
-                className={`web-paragraph-heading min-h-[48px] max-h-[144px] w-full overflow-y-auto border bg-[#fafafa] p-3 focus:outline focus:outline-2 focus:outline-[#154734] ${showAutocompletePanel ? 'resize-none border-b-0' : 'resize-y'} ${listInputError ? 'border-[#a6192e]' : 'border-[#a9a9a9]'}`}
+                className={`web-paragraph-heading break-words min-h-[48px] max-h-[144px] w-full overflow-y-auto border bg-[#fafafa] p-3 focus:outline focus:outline-2 focus:outline-[#154734] ${showAutocompletePanel ? 'resize-none border-b-0' : 'resize-y'} ${listInputError ? 'border-[#a6192e]' : 'border-[#a9a9a9]'}`}
                 value={inputValue}
                 placeholder={helperCopy}
                 onChange={(e) => handleListInputChange(e.target.value)}
@@ -3085,7 +3457,7 @@ function App() {
                   <span className="shrink-0">
                     <IconPreferences />
                   </span>
-                  <span className="whitespace-nowrap">Filters</span>
+                  <span className="whitespace-nowrap">Build Preferences</span>
                 </button>
               </div>
               <button
@@ -3126,7 +3498,15 @@ function App() {
         </div>
 
         <div className="mx-auto mt-10 w-full max-w-[768px] sm:mt-8">
-          <div className="mb-2 text-[14px] tracking-[2.8px]">NEED INSPIRATION?</div>
+          <div className="mb-3 flex flex-wrap items-center gap-[8px]">
+            <div className="text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Need inspiration?</div>
+            <CuisinePicker
+              value={cuisineSelection}
+              onChange={setCuisineSelection}
+              open={cuisinePickerOpen}
+              onOpenChange={setCuisinePickerOpen}
+            />
+          </div>
           <div className="flex flex-wrap gap-2 sm:gap-2">
             {inspirationSlots.map((chip) => (
               <button
@@ -3154,8 +3534,8 @@ function App() {
                   {mealGroups.filter((meal) => !meal.removed).map((meal) => {
                 const mealItems = meal.ingredients.length
                 const mealPrice = meal.ingredients.reduce((sum, i) => (i.selected ? sum + i.price * i.qty : sum), 0)
-                const metaParts = [meal.dietLabel, `${mealItems} items`, meal.serves, formatCurrency(mealPrice)].filter(Boolean) as string[]
-                const metaLine = metaParts.join(' • ')
+                const methodUrl = methodUrlForMeal(meal)
+                const metaLead = [meal.dietLabel, `${mealItems} items`, meal.serves].filter(Boolean).join(' • ')
                 return (
                   <article key={meal.id} className="border border-[#ddd] bg-white">
                     <div className="flex items-start gap-3 px-4 py-3 md:px-5 md:py-3.5">
@@ -3170,7 +3550,25 @@ function App() {
                       </button>
                       <div className="min-w-0 flex-1 pt-0.5">
                         <p className="text-[16px] font-medium leading-snug text-[#333]">{meal.title}</p>
-                        <p className="mt-1.5 text-[16px] font-light leading-6 text-[#53565A]">{metaLine}</p>
+                        <div className="mt-1.5 flex flex-wrap items-center text-[16px] font-light leading-6 text-[#53565A]">
+                          {metaLead ? <span>{metaLead}</span> : null}
+                          {metaLead ? (
+                            <span className="mx-1.5" aria-hidden="true">
+                              •
+                            </span>
+                          ) : null}
+                          <span>{formatCurrency(mealPrice)}</span>
+                          {methodUrl ? (
+                            <a
+                              href={methodUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-3 shrink-0 font-medium text-[#53565A] underline decoration-solid underline-offset-[3px]"
+                            >
+                              view method
+                            </a>
+                          ) : null}
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -3242,7 +3640,7 @@ function App() {
                               needText={item.needText}
                               name={item.name}
                               image={item.image}
-                              price={formatCurrency(item.price)}
+                              price={item.matched === false ? '—' : formatCurrency(item.price)}
                               unitPrice={item.unitPrice}
                               qty={item.qty}
                               selected={item.selected}
@@ -3260,7 +3658,22 @@ function App() {
                                   ),
                                 )
                               }
-                              onSwap={() => setSwapTarget({ kind: 'meal', mealId: meal.id, ingredientId: item.id, item: { name: item.name, image: item.image, price: item.price, unitPrice: item.unitPrice, productType: item.productType } })}
+                              onSwap={() =>
+                                setSwapTarget({
+                                  kind: 'meal',
+                                  mealId: meal.id,
+                                  ingredientId: item.id,
+                                  item: {
+                                    name: item.name,
+                                    image: item.image,
+                                    price: item.price,
+                                    unitPrice: item.unitPrice,
+                                    productType: item.productType,
+                                    ingredientIntent: item.ingredientIntent,
+                                    intentQuery: item.originalText || item.name,
+                                  },
+                                })
+                              }
                               onQtyDelta={(d) => changeMealQty(meal.id, item.id, d)}
                             />
                           ))}
@@ -3702,9 +4115,37 @@ function App() {
               </div>
             </div>
 
-            {/* You need: header */}
+            {/* You need: header + swap refinements in one grey block */}
             <div className="mx-4 bg-[#f5f5f5] px-4 py-3">
               <span className="text-sm text-[#53565A]">You need:</span>
+              {/* Local swap refinements (apply only to this modal) */}
+              <div
+                role="radiogroup"
+                aria-label="Refine swap alternatives"
+                className="mt-2 flex max-w-full items-center gap-[8px] overflow-x-auto whitespace-nowrap pb-1"
+              >
+                {(['All', 'Organic', 'Vegan', 'Vegetarian', 'Gluten-free', 'Essential', 'No.1'] as SwapRefinement[]).map((opt) => {
+                  const selected = swapRefinement === opt
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-pressed={selected}
+                      tabIndex={0}
+                      onClick={() => setSwapRefinement(opt)}
+                      className={`shrink-0 rounded-full border px-3 py-1 text-[14px] leading-6 transition-colors focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734] ${
+                        selected
+                          ? 'border-[#53565A] bg-[#53565A] text-white'
+                          : 'border-[#a9a9a9] bg-white text-[#333]'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             {/* Alternatives list */}
@@ -3741,6 +4182,17 @@ function App() {
                   </div>
                 ))
               )}
+              {!swapAltsLoading && !swapShowAllAlts && swapAltPoolSize > 4 && swapAlts.length > 0 ? (
+                <div className="px-4 pb-3 pt-2 text-center">
+                  <button
+                    type="button"
+                    className="text-[14px] font-medium text-[#53565A] underline decoration-solid underline-offset-[3px]"
+                    onClick={() => setSwapShowAllAlts(true)}
+                  >
+                    view all items
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

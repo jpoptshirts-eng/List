@@ -320,6 +320,40 @@ export function rankProductsForEntry(
   return getCategoryFallbackFromPopmas(query, primaryProducts, fallbackProducts)
 }
 
+/**
+ * Re-rank a small ordered list of catalog hits using the same
+ * favourites/previous-purchase personalization model used by `rankProductsForEntry`.
+ *
+ * This is useful for "refinement chips" where we already filtered the candidate subset.
+ */
+export function rankCatalogHitsWithPersonalization(
+  query: string,
+  candidates: WaitroseCatalogItem[],
+): WaitroseCatalogItem[] {
+  if (!query.trim() || candidates.length === 0) return []
+
+  const q = query.toLowerCase().trim()
+  const category = inferCategory(q)
+
+  const mockRanked = PREDICTION_CATALOG.map((p) => ({ p, score: scorePredictableProduct(p, q) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+
+  const filteredMocks = mockRanked.filter(
+    (x) => !category || x.p.category === category || x.score >= 30,
+  )
+  const personalizationMocks = filteredMocks.slice(0, 5).map((x) => x.p)
+
+  const scored = candidates.map((hit, i) => {
+    // Base score from current candidate order (match strength).
+    let score = (candidates.length - i) * 10
+    for (const mock of personalizationMocks) score += personalizationBoost(mock, hit)
+    return { hit, score }
+  })
+
+  return scored.sort((a, b) => b.score - a.score).map((x) => x.hit)
+}
+
 export function lineMatchesManualEssential(
   essential: { originalText?: string; name: string; manuallySelected?: boolean },
   line: string,

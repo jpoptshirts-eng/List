@@ -1,8 +1,8 @@
 /** Grey helper text shown over an empty list field — single source of truth for UI + “not real list” detection. */
 
-export const SHOP_LIST_HELPER_INITIAL = `Enter one item at a time, paste a list or upload a photo`
+export const SHOP_LIST_HELPER_INITIAL = `Enter an item, meal, paste from Notes or upload a photo of your list.`
 
-export const SHOP_LIST_HELPER_INITIAL_ASCII_APOSTROPHE = `Enter one item at a time, paste a list or upload a photo`
+export const SHOP_LIST_HELPER_INITIAL_ASCII_APOSTROPHE = `Enter an item, meal, paste from Notes or upload a photo of your list.`
 
 export const SHOP_LIST_HELPER_INSPIRATION_KNOWN = `Need inspiration?
 
