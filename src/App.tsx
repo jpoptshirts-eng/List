@@ -3133,7 +3133,7 @@ function App() {
                   className="flex w-full flex-wrap items-start content-start gap-5"
                   onSubmit={(e) => { e.preventDefault(); createNewList() }}
                 >
-                  <label className="w-full text-[14px] font-medium text-[#333]" htmlFor="new-list-name">
+                  <label className="w-full text-[16px] font-medium text-[#333]" htmlFor="new-list-name">
                     Enter list name
                   </label>
                   <div className="flex w-full flex-col gap-1">
