@@ -1569,7 +1569,7 @@ function IconChevronDownSmall({ open }: { open?: boolean }) {
   )
 }
 
-/** Custom dropdown — bordered trigger with popover list (selected row highlight + checkmark). */
+/** Compact inline cuisine control with a popover list. */
 function CuisinePicker({
   value,
   onChange,
@@ -1603,17 +1603,13 @@ function CuisinePicker({
     <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
-        className={`flex min-w-[148px] items-center justify-between gap-3 rounded-xl border-2 bg-white px-3.5 py-1.5 text-left text-[14px] leading-5 text-[#333] transition-colors focus:outline-none ${
-          open
-            ? 'border-[#007AFF] shadow-[0_0_0_3px_rgba(0,122,255,0.15)]'
-            : 'border-[#ddd] hover:border-[#a9a9a9]'
-        }`}
+        className="flex min-h-11 items-center gap-1 bg-transparent py-2 text-left text-[14px] leading-5 text-[#53565A] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Cuisine, ${value}. Tap to change.`}
+        aria-label={`Cuisine: ${value}`}
         onClick={() => onOpenChange(!open)}
       >
-        <span className="truncate">Cuisine: {value}</span>
+        <span className="whitespace-nowrap">Cuisine: {value}</span>
         <IconChevronDownSmall open={open} />
       </button>
 
@@ -1621,7 +1617,7 @@ function CuisinePicker({
         <ul
           role="listbox"
           aria-label="Cuisine options"
-          className="absolute left-0 top-[calc(100%+8px)] z-20 max-h-[min(280px,50vh)] min-w-full overflow-y-auto rounded-2xl border border-[#e8e8e8] bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+          className="absolute left-0 top-full z-20 max-h-[min(280px,50vh)] min-w-[148px] overflow-y-auto rounded-2xl border border-[#e8e8e8] bg-white p-2 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
         >
           {CUISINE_FILTER_OPTIONS.map((opt) => {
             const selected = opt === value
@@ -1834,6 +1830,9 @@ function App() {
 
   const buildFooterRef = useRef<HTMLElement | null>(null)
   const [buildFooterHeight, setBuildFooterHeight] = useState(0)
+  const [buildFooterVisible, setBuildFooterVisible] = useState(false)
+  const footerLastScrollYRef = useRef(0)
+  const footerRevealTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!swapTarget) {
@@ -1932,20 +1931,6 @@ function App() {
     return () => window.clearTimeout(timeout)
   }, [removedEssentialName])
 
-  useLayoutEffect(() => {
-    if (appView !== 'build') {
-      setBuildFooterHeight(0)
-      return
-    }
-    const el = buildFooterRef.current
-    if (!el) return
-    const measure = () => setBuildFooterHeight(el.getBoundingClientRect().height)
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [appView])
-
   useEffect(() => {
     if (appView !== 'build') return
     if (autocompleteCatalog.length > 0) return
@@ -2023,6 +2008,69 @@ function App() {
   const estimatedTotal = mealsTotal + essentialsTotal
   const displayTotal = generated ? estimatedTotal : 0
   const canAddToTrolley = generated && displayTotal > 0
+  const hasBuildProducts =
+    generated &&
+    (mealGroups.some((meal) => !meal.removed && meal.ingredients.length > 0) || essentials.length > 0)
+
+  useLayoutEffect(() => {
+    if (appView !== 'build' || !hasBuildProducts) return
+    const el = buildFooterRef.current
+    if (!el) return
+    const measure = () => setBuildFooterHeight(el.getBoundingClientRect().height)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [appView, hasBuildProducts])
+
+  useEffect(() => {
+    if (appView !== 'build' || !hasBuildProducts) {
+      const frame = window.requestAnimationFrame(() => setBuildFooterVisible(false))
+      if (footerRevealTimeoutRef.current != null) {
+        window.clearTimeout(footerRevealTimeoutRef.current)
+        footerRevealTimeoutRef.current = null
+      }
+      return () => window.cancelAnimationFrame(frame)
+    }
+
+    const entryFrame = window.requestAnimationFrame(() => setBuildFooterVisible(true))
+    footerLastScrollYRef.current = window.scrollY
+
+    const scheduleReveal = () => {
+      if (footerRevealTimeoutRef.current != null) {
+        window.clearTimeout(footerRevealTimeoutRef.current)
+      }
+      footerRevealTimeoutRef.current = window.setTimeout(() => {
+        setBuildFooterVisible(true)
+        footerRevealTimeoutRef.current = null
+      }, 650)
+    }
+
+    const onScroll = () => {
+      const nextY = window.scrollY
+      const delta = nextY - footerLastScrollYRef.current
+      if (Math.abs(delta) >= 8) {
+        if (delta > 0 && nextY > 24) {
+          setBuildFooterVisible(false)
+        } else if (delta < 0) {
+          setBuildFooterVisible(true)
+        }
+        footerLastScrollYRef.current = nextY
+      }
+      scheduleReveal()
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.cancelAnimationFrame(entryFrame)
+      window.removeEventListener('scroll', onScroll)
+      if (footerRevealTimeoutRef.current != null) {
+        window.clearTimeout(footerRevealTimeoutRef.current)
+        footerRevealTimeoutRef.current = null
+      }
+    }
+  }, [appView, hasBuildProducts])
+
   /** Sum of line qty for selected meal ingredients + all essentials (matches trolley monetary total scope). */
   const unitsForTrolleyAdd = (() => {
     let n = 0
@@ -2921,7 +2969,7 @@ function App() {
     if (!el) return
     el.style.height = '0px'
     const maxHeight = 144
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 48), maxHeight)}px`
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 72), maxHeight)}px`
   }, [appView, inputValue, helperCopy, showAutocompletePanel, inputMode])
 
   const allEssentialsVisible = !hasVisibleEssentials || hiddenEssentialsCount === 0 || showMoreEssentials
@@ -2940,7 +2988,15 @@ function App() {
   )
 
   return (
-    <main className="app-shell min-h-screen bg-[#fafafa] pb-32 font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]">
+    <main
+      className="app-shell min-h-screen bg-[#fafafa] font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]"
+      style={{
+        paddingBottom:
+          appView === 'build' && hasBuildProducts
+            ? `${Math.max(buildFooterHeight + 20, 32)}px`
+            : '32px',
+      }}
+    >
       <div
         data-sticky-site-header
         className={suppressStickyHeader ? 'relative z-50 bg-white' : 'sticky top-0 z-50 bg-white'}
@@ -3386,7 +3442,8 @@ function App() {
                     : undefined
                 }
                 autoComplete="off"
-                className={`web-paragraph-heading break-words min-h-[48px] max-h-[144px] w-full overflow-y-auto border bg-[#fafafa] p-3 focus:outline focus:outline-2 focus:outline-[#154734] ${showAutocompletePanel ? 'resize-none border-b-0' : 'resize-y'} ${listInputError ? 'border-[#a6192e]' : 'border-[#a9a9a9]'}`}
+                rows={2}
+                className={`web-paragraph-heading min-h-[72px] max-h-[144px] w-full overflow-y-auto border bg-[#fafafa] p-3 text-[#333] placeholder:text-[#53565A] focus:outline focus:outline-2 focus:outline-[#154734] ${showAutocompletePanel ? 'resize-none border-b-0' : 'resize-y'} ${listInputError ? 'border-[#a6192e]' : 'border-[#a9a9a9]'}`}
                 value={inputValue}
                 placeholder={helperCopy}
                 onChange={(e) => handleListInputChange(e.target.value)}
@@ -3524,8 +3581,8 @@ function App() {
           </p>
         </div>
 
-        <div className="mx-auto mt-[60px] w-full max-w-[768px] sm:mt-[52px]">
-          <div className="mb-3 flex flex-wrap items-center gap-[8px]">
+        <div className="mx-auto mt-12 w-full max-w-[768px]">
+          <div className="mb-1 flex flex-wrap items-center gap-x-4">
             <div className="text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Need inspiration?</div>
             <CuisinePicker
               value={cuisineSelection}
@@ -3812,13 +3869,21 @@ function App() {
         )}
       </section>
 
-      {appView === 'build' && (
+      {appView === 'build' && hasBuildProducts && (
       <footer
         ref={buildFooterRef}
-        className="fixed bottom-0 left-0 right-0 border-t border-[#ddd] bg-white shadow-[0px_-2px_4px_0px_rgba(0,0,0,0.05)]"
+        className={`fixed bottom-0 left-0 right-0 z-30 border-t border-[#ddd] bg-white shadow-[0px_-2px_4px_0px_rgba(0,0,0,0.05)] transition-[transform,opacity] duration-300 ease-out ${
+          buildFooterVisible
+            ? 'translate-y-0 opacity-100'
+            : 'pointer-events-none translate-y-full opacity-0'
+        }`}
+        aria-hidden={!buildFooterVisible}
       >
         <div className="mx-auto flex w-full max-w-[1259px] flex-col items-center">
-          <div className="flex w-full max-w-[768px] items-center justify-center gap-3 px-4 pb-4 pt-3 max-md:flex-col max-md:items-center max-md:justify-end max-md:gap-3 max-md:p-4">
+          <div
+            className="flex w-full max-w-[768px] items-center justify-center gap-3 px-4 pt-3 max-md:flex-col max-md:items-center max-md:justify-end max-md:gap-3 max-md:px-4 max-md:pt-4"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+          >
             <div className="flex w-full items-center justify-between self-stretch text-[16px] leading-6 lg:justify-start">
               <span className="flex items-center gap-2">
                 <span>Estimated total</span>
@@ -3835,6 +3900,7 @@ function App() {
               <button
                 className={`flex w-full flex-col items-center justify-center self-stretch px-5 py-2 text-[16px] leading-6 ${canAddToTrolley ? 'bg-[#5B8226] text-white' : 'bg-[#eeeeee] text-[#a9a9a9]'}`}
                 disabled={!canAddToTrolley}
+                tabIndex={buildFooterVisible ? 0 : -1}
                 onClick={() => {
                   const added = unitsForTrolleyAdd
                   setTrolleyLines((prev) => mergeAppendBuildOntoTrolley(prev, mealGroups, essentials))
