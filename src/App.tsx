@@ -1906,9 +1906,7 @@ function App() {
 
   const buildFooterRef = useRef<HTMLElement | null>(null)
   const [buildFooterHeight, setBuildFooterHeight] = useState(0)
-  const [buildFooterVisible, setBuildFooterVisible] = useState(false)
-  const footerLastScrollYRef = useRef(0)
-  const footerRevealTimeoutRef = useRef<number | null>(null)
+  const swapModalRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!swapTarget) {
@@ -1961,9 +1959,43 @@ function App() {
   useEffect(() => {
     if (!swapTarget) return
     const prevOverflow = document.body.style.overflow
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const modal = swapModalRef.current
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const focusFrame = window.requestAnimationFrame(() => {
+      modal?.querySelector<HTMLElement>(focusableSelector)?.focus()
+    })
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setSwapTarget(null)
+        return
+      }
+      if (event.key !== 'Tab' || !modal) return
+      const focusable = Array.from(modal.querySelectorAll<HTMLElement>(focusableSelector))
+      if (focusable.length === 0) {
+        event.preventDefault()
+        modal.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
     document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKeyDown)
     return () => {
+      window.cancelAnimationFrame(focusFrame)
       document.body.style.overflow = prevOverflow
+      document.removeEventListener('keydown', onKeyDown)
+      previouslyFocused?.focus()
     }
   }, [swapTarget])
 
@@ -2102,9 +2134,10 @@ function App() {
   const hasBuildProducts =
     generated &&
     (mealGroups.some((meal) => !meal.removed && meal.ingredients.length > 0) || essentials.length > 0)
+  const showBuildFooter = appView === 'build' && hasBuildProducts && !swapTarget
 
   useLayoutEffect(() => {
-    if (appView !== 'build' || !hasBuildProducts) return
+    if (!showBuildFooter) return
     const el = buildFooterRef.current
     if (!el) return
     const measure = () => setBuildFooterHeight(el.getBoundingClientRect().height)
@@ -2112,55 +2145,7 @@ function App() {
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [appView, hasBuildProducts])
-
-  useEffect(() => {
-    if (appView !== 'build' || !hasBuildProducts) {
-      const frame = window.requestAnimationFrame(() => setBuildFooterVisible(false))
-      if (footerRevealTimeoutRef.current != null) {
-        window.clearTimeout(footerRevealTimeoutRef.current)
-        footerRevealTimeoutRef.current = null
-      }
-      return () => window.cancelAnimationFrame(frame)
-    }
-
-    const entryFrame = window.requestAnimationFrame(() => setBuildFooterVisible(true))
-    footerLastScrollYRef.current = window.scrollY
-
-    const scheduleReveal = () => {
-      if (footerRevealTimeoutRef.current != null) {
-        window.clearTimeout(footerRevealTimeoutRef.current)
-      }
-      footerRevealTimeoutRef.current = window.setTimeout(() => {
-        setBuildFooterVisible(true)
-        footerRevealTimeoutRef.current = null
-      }, 650)
-    }
-
-    const onScroll = () => {
-      const nextY = window.scrollY
-      const delta = nextY - footerLastScrollYRef.current
-      if (Math.abs(delta) >= 8) {
-        if (delta > 0 && nextY > 24) {
-          setBuildFooterVisible(false)
-        } else if (delta < 0) {
-          setBuildFooterVisible(true)
-        }
-        footerLastScrollYRef.current = nextY
-      }
-      scheduleReveal()
-    }
-
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      window.cancelAnimationFrame(entryFrame)
-      window.removeEventListener('scroll', onScroll)
-      if (footerRevealTimeoutRef.current != null) {
-        window.clearTimeout(footerRevealTimeoutRef.current)
-        footerRevealTimeoutRef.current = null
-      }
-    }
-  }, [appView, hasBuildProducts])
+  }, [showBuildFooter])
 
   /** Sum of line qty for selected meal ingredients + all essentials (matches trolley monetary total scope). */
   const unitsForTrolleyAdd = (() => {
@@ -3099,9 +3084,11 @@ function App() {
       className="app-shell min-h-screen bg-[#fafafa] font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]"
       style={{
         paddingBottom:
-          appView === 'build' && hasBuildProducts
-            ? `${Math.max(buildFooterHeight + 20, 32)}px`
-            : '32px',
+          appView !== 'build'
+            ? '32px'
+            : showBuildFooter
+              ? `calc(${buildFooterHeight}px + env(safe-area-inset-bottom) + 20px)`
+              : '0px',
       }}
     >
       <div
@@ -3964,15 +3951,10 @@ function App() {
         )}
       </section>
 
-      {appView === 'build' && hasBuildProducts && (
+      {showBuildFooter && (
       <footer
         ref={buildFooterRef}
-        className={`fixed bottom-0 left-0 right-0 z-30 border-t border-[#ddd] bg-white shadow-[0px_-2px_4px_0px_rgba(0,0,0,0.05)] transition-[transform,opacity] duration-300 ease-out ${
-          buildFooterVisible
-            ? 'translate-y-0 opacity-100'
-            : 'pointer-events-none translate-y-full opacity-0'
-        }`}
-        aria-hidden={!buildFooterVisible}
+        className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#ddd] bg-white shadow-[0px_-2px_4px_0px_rgba(0,0,0,0.05)]"
       >
         <div className="mx-auto flex w-full max-w-[1259px] flex-col items-center">
           <div
@@ -3995,7 +3977,6 @@ function App() {
               <button
                 className={`flex w-full flex-col items-center justify-center self-stretch px-5 py-2 text-[16px] leading-6 ${canAddToTrolley ? 'bg-[#5B8226] text-white' : 'bg-[#eeeeee] text-[#a9a9a9]'}`}
                 disabled={!canAddToTrolley}
-                tabIndex={buildFooterVisible ? 0 : -1}
                 onClick={() => {
                   const added = unitsForTrolleyAdd
                   setTrolleyLines((prev) => mergeAppendBuildOntoTrolley(prev, mealGroups, essentials))
@@ -4259,11 +4240,13 @@ function App() {
       )}
 
       {swapTarget && (
-        <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/30 p-0 md:items-center md:p-4">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/30 p-0 md:items-center md:p-4">
           <div
+            ref={swapModalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="swap-modal-title"
+            tabIndex={-1}
             className="relative h-[100dvh] w-full min-h-0 overflow-y-auto bg-white md:h-auto md:max-h-[90vh] md:max-w-[720px]"
           >
             <div className="sticky top-0 z-30 flex h-16 items-center justify-center border-b border-[#ddd] bg-white">
@@ -4345,9 +4328,7 @@ function App() {
             {/* Alternatives list */}
             <div
               className="pt-4"
-              style={{
-                paddingBottom: `calc(${buildFooterHeight}px + env(safe-area-inset-bottom) + 24px)`,
-              }}
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}
             >
               {swapAltsLoading ? (
                 <div className="px-4 py-8 text-center text-sm text-[#757575]">Finding alternatives…</div>
