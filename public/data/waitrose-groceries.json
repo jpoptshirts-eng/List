@@ -1,7 +1,7 @@
 {
   "source": "https://www.waitrose.com/ecom/shop/browse/groceries",
   "fetchedAt": "2026-04-24T18:32:58.188Z",
-  "count": 50,
+  "count": 56,
   "products": [
     {
       "id": "wr-234917-1-2",
@@ -105,7 +105,9 @@
       "price": 1.25,
       "unitPrice": "£1.67/litre",
       "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_829563_BP_4.jpg",
-      "productUrl": "https://www.waitrose.com/ecom/products/alpro-barista-coconut-chilled-dairy-free-milk-alternative/829563-826872-826873"
+      "productUrl": "https://www.waitrose.com/ecom/products/alpro-barista-coconut-chilled-dairy-free-milk-alternative/829563-826872-826873",
+      "productType": "Vegan Dairy Free Milk Alternative",
+      "range": "Plant Based"
     },
     {
       "id": "wr-851002-759780-759781",
@@ -289,7 +291,69 @@
       "price": 1.75,
       "unitPrice": "77p/litre",
       "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053457_BP_4.jpg",
-      "productUrl": "https://www.waitrose.com/ecom/products/essential-british-free-range-semi-skimmed-milk-4-pints/053457-26759-26760"
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-british-free-range-semi-skimmed-milk-4-pints/053457-26759-26760",
+      "productType": "Semi-Skimmed Milk",
+      "range": "Essentials"
+    },
+    {
+      "id": "prototype-milk-whole-4pt",
+      "name": "Waitrose British Whole Milk 4 Pints",
+      "price": 1.75,
+      "unitPrice": "77p/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053457_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/shop/search?searchTerm=whole%20milk",
+      "productType": "Whole Milk",
+      "range": "Waitrose"
+    },
+    {
+      "id": "prototype-milk-essential-whole-2pt",
+      "name": "Essential British Whole Milk 2 Pints",
+      "price": 1.25,
+      "unitPrice": "£1.10/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053448_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/shop/search?searchTerm=essential%20whole%20milk",
+      "productType": "Whole Milk",
+      "range": "Essentials"
+    },
+    {
+      "id": "prototype-milk-skimmed-2pt",
+      "name": "Waitrose British Skimmed Milk 2 Pints",
+      "price": 1.25,
+      "unitPrice": "£1.10/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053448_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/shop/search?searchTerm=skimmed%20milk",
+      "productType": "Skimmed Milk",
+      "range": "Waitrose"
+    },
+    {
+      "id": "prototype-milk-duchy-whole-2pt",
+      "name": "Waitrose Duchy Organic Whole Milk 2 Pints",
+      "price": 1.65,
+      "unitPrice": "£1.45/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053448_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/shop/search?searchTerm=duchy%20organic%20whole%20milk",
+      "productType": "Organic Whole Milk",
+      "range": "Duchy Organic"
+    },
+    {
+      "id": "prototype-milk-duchy-semi-2pt",
+      "name": "WR DOrg Semi Skimmed Milk 2 Pints",
+      "price": 1.65,
+      "unitPrice": "£1.45/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053448_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/shop/search?searchTerm=duchy%20organic%20semi-skimmed%20milk",
+      "productType": "Organic Semi-Skimmed Milk",
+      "range": "Duchy Organic"
+    },
+    {
+      "id": "prototype-milk-no1-jersey-1l",
+      "name": "No.1 Jersey Whole Milk 1L",
+      "price": 1.8,
+      "unitPrice": "£1.80/litre",
+      "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053457_BP_4.jpg",
+      "productUrl": "https://www.waitrose.com/ecom/shop/search?searchTerm=jersey%20whole%20milk",
+      "productType": "Whole Milk",
+      "range": "No.1"
     },
     {
       "id": "wr-085115-43203-43204",
@@ -329,7 +393,9 @@
       "price": 1.25,
       "unitPrice": "£1.10/litre",
       "imageUrl": "https://ecom-su-static-prod.wtrecom.com/images/products/4/LN_053448_BP_4.jpg",
-      "productUrl": "https://www.waitrose.com/ecom/products/essential-british-free-range-semi-skimmed-milk-2-pints/053448-26749-26750"
+      "productUrl": "https://www.waitrose.com/ecom/products/essential-british-free-range-semi-skimmed-milk-2-pints/053448-26749-26750",
+      "productType": "Semi-Skimmed Milk",
+      "range": "Essentials"
     },
     {
       "id": "wr-032579-15919-15920",

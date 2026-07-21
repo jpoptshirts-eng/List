@@ -41,6 +41,16 @@ type RangeOption = 'No 1 Range' | 'Essentials' | 'Organic'
 type HouseholdOption = 'Serves 1' | 'Serves 2' | 'Serves 3' | 'Serves 4' | 'Serves 5' | 'Serves 6+'
 type SwapRefinement = 'All' | 'Organic' | 'Vegan' | 'Vegetarian' | 'Gluten-free' | 'Essential' | 'No.1'
 
+const SWAP_REFINEMENT_OPTIONS: SwapRefinement[] = [
+  'All',
+  'Organic',
+  'Vegan',
+  'Vegetarian',
+  'Gluten-free',
+  'Essential',
+  'No.1',
+]
+
 type BuildPreferencesState = {
   dietSelections: DietOption[]
   rangeSelections: RangeOption[]
@@ -137,41 +147,61 @@ type SwapTarget =
   | { kind: 'meal'; mealId: string; ingredientId: string; item: SwapItem }
   | { kind: 'essential'; id: string; item: SwapItem }
 
+function normalizedSwapProductMetadata(product: WaitroseCatalogItem): {
+  text: string
+  tokens: Set<string>
+} {
+  const text = [
+    product.range,
+    product.productType,
+    product.grouping,
+    product.popmasType,
+    product.organic ? 'organic' : '',
+    product.name,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { text, tokens: new Set(text.split(' ').filter(Boolean)) }
+}
+
 function filterPoolBySwapRefinement(
   products: WaitroseCatalogItem[],
   refinement: SwapRefinement,
 ): WaitroseCatalogItem[] {
   if (refinement === 'All') return products
   return products.filter((p) => {
-    const range = (p.range ?? '').toLowerCase()
-    const productType = (p.productType ?? '').toLowerCase()
-    const name = p.name.toLowerCase()
+    const { text, tokens } = normalizedSwapProductMetadata(p)
     switch (refinement) {
       case 'Organic':
-        return range.includes('organic') || name.includes('organic')
+        return (
+          tokens.has('organic') ||
+          tokens.has('duchy') ||
+          tokens.has('org') ||
+          tokens.has('dorg')
+        )
       case 'Vegan':
-        return productType.includes('vegan') || name.includes('vegan')
+        return (
+          tokens.has('vegan') ||
+          text.includes('plant based') ||
+          text.includes('dairy free')
+        )
       case 'Vegetarian':
-        return productType.includes('vegetarian') || name.includes('vegetarian')
+        return tokens.has('vegetarian')
       case 'Gluten-free':
         return (
-          productType.includes('gluten') ||
-          productType.includes('free from') ||
-          name.includes('gluten') ||
-          name.includes('free from') ||
-          name.includes('gluten-free') ||
-          name.includes('gluten free')
+          text.includes('gluten free') ||
+          text.includes('free from')
         )
       case 'Essential':
-        return range.includes('essentials') || name.includes('essentials')
+        return tokens.has('essential') || tokens.has('essentials')
       case 'No.1':
         return (
-          range.includes('no 1') ||
-          range.includes('no.1') ||
-          range.includes('no1') ||
-          name.includes('no 1') ||
-          name.includes('no.1') ||
-          name.includes('no1')
+          text.includes('no 1') ||
+          tokens.has('no1')
         )
       default:
         return true
@@ -179,21 +209,28 @@ function filterPoolBySwapRefinement(
   })
 }
 
-function buildSwapAlternatives(
+function buildSwapAlternativePool(
   item: SwapItem,
-  pool: WaitroseCatalogItem[],
-  showAll: boolean,
-): { alts: WaitroseCatalogItem[]; poolSize: number } {
+  products: WaitroseCatalogItem[],
+): WaitroseCatalogItem[] {
   const intent = resolveSwapIngredientIntent(item.ingredientIntent, item.intentQuery, item.name)
   const query = swapSearchQuery(intent)
-  const searchLimit = showAll ? pool.length : 60
-  const ordered = topCatalogMatches(query, pool, searchLimit, item.name, item.productType)
-  const suitable = filterSwapAlternatives(intent, ordered)
-  const reranked = rankCatalogHitsWithPersonalization(query, suitable)
-  return {
-    alts: showAll ? reranked : reranked.slice(0, 4),
-    poolSize: suitable.length,
-  }
+  const sameCategory = filterSwapAlternatives(intent, products)
+  const ordered = topCatalogMatches(query, sameCategory, sameCategory.length, item.name)
+  return rankCatalogHitsWithPersonalization(query, ordered)
+}
+
+function mergeSwapCatalogs(
+  primary: WaitroseCatalogItem[],
+  fallback: WaitroseCatalogItem[],
+): WaitroseCatalogItem[] {
+  const seen = new Set<string>()
+  return [...primary, ...fallback].filter((product) => {
+    const key = product.name.toLowerCase().trim()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 type AppView = 'index' | 'build' | 'trolley' | 'favourites'
@@ -1765,11 +1802,10 @@ function App() {
   const [trolleyLines, setTrolleyLines] = useState<TrolleyLine[]>([])
   const [trolleySnackbar, setTrolleySnackbar] = useState('')
   const [swapTarget, setSwapTarget] = useState<SwapTarget | null>(null)
-  const [swapAlts, setSwapAlts] = useState<WaitroseCatalogItem[]>([])
+  const [swapAlternativePool, setSwapAlternativePool] = useState<WaitroseCatalogItem[]>([])
   const [swapAltsLoading, setSwapAltsLoading] = useState(false)
   const [swapRefinement, setSwapRefinement] = useState<SwapRefinement>('All')
   const [swapShowAllAlts, setSwapShowAllAlts] = useState(false)
-  const [swapAltPoolSize, setSwapAltPoolSize] = useState(0)
   const swapCatalogRef = useRef<WaitroseCatalogItem[] | null>(null)
   const [autocompleteCatalog, setAutocompleteCatalog] = useState<WaitroseCatalogItem[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
@@ -1807,6 +1843,25 @@ function App() {
     () => countActiveBuildPreferences(dietSelections, rangeSelections, household, itemsOnly),
     [dietSelections, rangeSelections, household, itemsOnly],
   )
+
+  const availableSwapRefinements = useMemo(
+    () =>
+      SWAP_REFINEMENT_OPTIONS.filter(
+        (refinement) =>
+          refinement === 'All'
+            ? swapAlternativePool.length > 0
+            : filterPoolBySwapRefinement(swapAlternativePool, refinement).length > 0,
+      ),
+    [swapAlternativePool],
+  )
+  const filteredSwapAlternatives = useMemo(
+    () => filterPoolBySwapRefinement(swapAlternativePool, swapRefinement),
+    [swapAlternativePool, swapRefinement],
+  )
+  const swapAlts = swapShowAllAlts
+    ? filteredSwapAlternatives
+    : filteredSwapAlternatives.slice(0, 4)
+  const swapAltPoolSize = filteredSwapAlternatives.length
 
   const [appView, setAppView] = useState<AppView>('index')
   const [savedLists, setSavedLists] = useState<SavedList[]>([])
@@ -1857,49 +1912,51 @@ function App() {
 
   useEffect(() => {
     if (!swapTarget) {
-      setSwapAlts([])
+      setSwapAlternativePool([])
       return
     }
     if (swapCatalogRef.current) {
-      const pool = filterPoolBySwapRefinement(swapCatalogRef.current, swapRefinement)
-      const { alts, poolSize } = buildSwapAlternatives(
-        swapTarget.item,
-        pool,
-        swapShowAllAlts,
-      )
-      setSwapAltPoolSize(poolSize)
-      setSwapAlts(alts)
+      setSwapAlternativePool(buildSwapAlternativePool(swapTarget.item, swapCatalogRef.current))
+      setSwapAltsLoading(false)
       return
     }
     setSwapAltsLoading(true)
     void loadCatalogForBuildShop()
       .then((payload) => {
-        swapCatalogRef.current = payload.primary.products
-        const pool = filterPoolBySwapRefinement(payload.primary.products, swapRefinement)
-        const { alts, poolSize } = buildSwapAlternatives(
-          swapTarget.item,
-          pool,
-          swapShowAllAlts,
+        const swapCatalog = mergeSwapCatalogs(
+          payload.primary.products,
+          payload.fallback?.products ?? [],
         )
-        setSwapAltPoolSize(poolSize)
-        setSwapAlts(alts)
+        swapCatalogRef.current = swapCatalog
+        setSwapAlternativePool(buildSwapAlternativePool(swapTarget.item, swapCatalog))
         setSwapAltsLoading(false)
       })
       .catch((err) => {
         if (DEBUG_MEAL_RECIPE_BUILD) console.error('[swap] POPMAS error', err)
-        setSwapAlts([])
+        setSwapAlternativePool([])
         setSwapAltsLoading(false)
       })
-  }, [swapTarget, swapRefinement, swapShowAllAlts])
+  }, [swapTarget])
 
   useEffect(() => {
-    if (swapTarget) setSwapRefinement('All')
+    if (!swapTarget) return
+    setSwapRefinement('All')
+    setSwapShowAllAlts(false)
   }, [swapTarget])
 
   useEffect(() => {
     if (!swapTarget) return
     setSwapShowAllAlts(false)
-  }, [swapTarget, swapRefinement])
+  }, [swapRefinement, swapTarget])
+
+  useEffect(() => {
+    if (
+      swapRefinement !== 'All' &&
+      !availableSwapRefinements.includes(swapRefinement)
+    ) {
+      setSwapRefinement('All')
+    }
+  }, [availableSwapRefinements, swapRefinement])
 
   useEffect(() => {
     if (!swapTarget) return
@@ -1966,7 +2023,12 @@ function App() {
     void loadCatalogForBuildShop()
       .then((payload) => {
         setAutocompleteCatalog(payload.primary.products)
-        if (!swapCatalogRef.current) swapCatalogRef.current = payload.primary.products
+        if (!swapCatalogRef.current) {
+          swapCatalogRef.current = mergeSwapCatalogs(
+            payload.primary.products,
+            payload.fallback?.products ?? [],
+          )
+        }
       })
       .catch(() => {
         setAutocompleteCatalog([])
@@ -4198,11 +4260,16 @@ function App() {
 
       {swapTarget && (
         <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/30 p-0 md:items-center md:p-4">
-          <div className="relative flex h-[100dvh] w-full min-h-0 flex-col bg-white md:h-auto md:max-h-[90vh] md:max-w-[720px]">
-            <div className="sticky top-0 z-10 bg-white pb-4 pt-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="swap-modal-title"
+            className="relative h-[100dvh] w-full min-h-0 overflow-y-auto bg-white md:h-auto md:max-h-[90vh] md:max-w-[720px]"
+          >
+            <div className="sticky top-0 z-30 flex h-16 items-center justify-center border-b border-[#ddd] bg-white">
               {/* X close button */}
               <button
-                className="absolute right-0 top-0 z-10 pr-[20px] pt-[20px] text-[#53565A]"
+                className="absolute right-0 top-0 z-10 flex h-16 w-16 items-center justify-center text-[#53565A]"
                 onClick={() => setSwapTarget(null)}
                 aria-label="Close"
               >
@@ -4211,7 +4278,7 @@ function App() {
                 </svg>
               </button>
 
-              <h2 className="mt-1 text-center tracking-[3px] text-[#53565A]" style={{ fontSize: '20px' }}>
+              <h2 id="swap-modal-title" className="text-center tracking-[3px] text-[#53565A]" style={{ fontSize: '20px' }}>
                 Swap item
               </h2>
             </div>
@@ -4240,7 +4307,7 @@ function App() {
             </div>
 
             {/* You need: header + swap refinements in one grey block */}
-            <div className="mx-4 bg-[#f5f5f5] px-4 py-3">
+            <div className="sticky top-16 z-20 mx-4 border-y border-[#ddd] bg-[#f5f5f5] px-4 py-3 shadow-[0_2px_2px_rgba(0,0,0,0.04)]">
               <span className="text-sm text-[#53565A]">You need:</span>
               {/* Local swap refinements (apply only to this modal) */}
               <div
@@ -4248,7 +4315,7 @@ function App() {
                 aria-label="Refine swap alternatives"
                 className="mt-2 flex max-w-full items-center gap-[8px] overflow-x-auto whitespace-nowrap pb-1"
               >
-                {(['All', 'Organic', 'Vegan', 'Vegetarian', 'Gluten-free', 'Essential', 'No.1'] as SwapRefinement[]).map((opt) => {
+                {availableSwapRefinements.map((opt) => {
                   const selected = swapRefinement === opt
                   return (
                     <button
@@ -4258,7 +4325,10 @@ function App() {
                       aria-checked={selected}
                       aria-pressed={selected}
                       tabIndex={0}
-                      onClick={() => setSwapRefinement(opt)}
+                      onClick={() => {
+                        setSwapShowAllAlts(false)
+                        setSwapRefinement(opt)
+                      }}
                       className={`shrink-0 rounded-full border px-3 py-1 text-[14px] leading-6 transition-colors focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734] ${
                         selected
                           ? 'border-[#53565A] bg-[#53565A] text-white'
@@ -4273,11 +4343,16 @@ function App() {
             </div>
 
             {/* Alternatives list */}
-            <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+            <div
+              className="pt-4"
+              style={{
+                paddingBottom: `calc(${buildFooterHeight}px + env(safe-area-inset-bottom) + 24px)`,
+              }}
+            >
               {swapAltsLoading ? (
                 <div className="px-4 py-8 text-center text-sm text-[#757575]">Finding alternatives…</div>
               ) : swapAlts.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-[#757575]">No alternatives found.</div>
+                <div className="px-4 py-8 text-center text-sm text-[#757575]">No alternatives available.</div>
               ) : (
                 swapAlts.map((choice) => (
                   <div key={choice.id} className="mx-4 mb-2 last:mb-0 border border-[#ddd] bg-white">
@@ -4313,7 +4388,7 @@ function App() {
                     className="text-[14px] font-medium text-[#53565A] underline decoration-solid underline-offset-[3px]"
                     onClick={() => setSwapShowAllAlts(true)}
                   >
-                    view all items
+                    View all items
                   </button>
                 </div>
               ) : null}

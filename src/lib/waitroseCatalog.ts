@@ -14,6 +14,8 @@ export type WaitroseCatalogItem = {
   grouping?: string
   /** POPMAS Type (optional metadata for future refinement). */
   popmasType?: string
+  /** Optional normalized organic flag supplied by prototype/catalog data. */
+  organic?: boolean
 }
 
 export type WaitroseCatalogPayload = {

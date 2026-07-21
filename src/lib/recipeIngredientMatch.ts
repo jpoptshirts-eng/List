@@ -174,6 +174,8 @@ export function swapSearchQuery(ingredientIntent: string): string {
 /** Infer recipe ingredient intent from a wrongly matched product name (legacy rows). */
 export function inferIngredientIntentFromProductName(productName: string): string | null {
   const hay = norm(productName)
+  if (/\bmilk\b/.test(hay)) return 'milk'
+  if (/\beggs?\b/.test(hay)) return 'egg'
   if (/\bspaghetti\b/.test(hay)) return 'spaghetti'
   if (/\bparmesan\b|\bparmigiano\b|\breggiano\b/.test(hay)) return 'parmesan'
   if (/\bmixed herbs\b|\bitalian herbs\b/.test(hay)) return 'italian herbs'
