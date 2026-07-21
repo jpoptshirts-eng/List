@@ -41,6 +41,30 @@ type RangeOption = 'No 1 Range' | 'Essentials' | 'Organic'
 type HouseholdOption = 'Serves 1' | 'Serves 2' | 'Serves 3' | 'Serves 4' | 'Serves 5' | 'Serves 6+'
 type SwapRefinement = 'All' | 'Organic' | 'Vegan' | 'Vegetarian' | 'Gluten-free' | 'Essential' | 'No.1'
 
+type BuildPreferencesState = {
+  dietSelections: DietOption[]
+  rangeSelections: RangeOption[]
+  household: HouseholdOption | null
+  itemsOnly: boolean
+}
+
+function emptyBuildPreferences(): BuildPreferencesState {
+  return {
+    dietSelections: [],
+    rangeSelections: [],
+    household: null,
+    itemsOnly: false,
+  }
+}
+
+function copyBuildPreferences(preferences: BuildPreferencesState): BuildPreferencesState {
+  return {
+    ...preferences,
+    dietSelections: [...preferences.dietSelections],
+    rangeSelections: [...preferences.rangeSelections],
+  }
+}
+
 type Ingredient = {
   id: string
   name: string
@@ -64,7 +88,6 @@ type Ingredient = {
 type MealGroup = {
   id: string
   title: string
-  dietLabel?: string
   /** Internal: cuisine metadata from the recipe model. */
   cuisine?: Cuisine
   /** Internal: inspiration chip label when built from a recipe chip. */
@@ -1181,7 +1204,6 @@ function buildShopFromListLines(
   let fallbackMatches = 0
   let mi = 0
   let ei = 0
-  const dietLabel = dietSelections.includes('Vegetarian') ? 'Vegetarian' : undefined
   const servesNumber = serves.includes('6+') ? 6 : Number(serves.replace(/\D+/g, '')) || 4
   const servesMultiplier = Math.max(1, Math.ceil(servesNumber / 4))
 
@@ -1269,7 +1291,6 @@ function buildShopFromListLines(
         meals.push({
           id,
           title: recipeFromLine.fullName,
-          dietLabel,
           cuisine: recipeFromLine.cuisine,
           chipLabel: recipeFromLine.chipLabel,
           methodUrl: recipeFromLine.methodUrl ?? waitroseRecipeMethodUrl(recipeFromLine.fullName),
@@ -1286,7 +1307,6 @@ function buildShopFromListLines(
       meals.push({
         id,
         title: trimmed,
-        dietLabel,
         serves,
         removed: false,
         expanded: false,
@@ -1768,10 +1788,11 @@ function App() {
   const [removedEssentialName, setRemovedEssentialName] = useState('')
   const [activeInspirationChip, setActiveInspirationChip] = useState<string | null>(null)
 
-  const [dietSelections, setDietSelections] = useState<DietOption[]>([])
-  const [rangeSelections, setRangeSelections] = useState<RangeOption[]>([])
-  const [household, setHousehold] = useState<HouseholdOption | null>(null)
-  const [itemsOnly, setItemsOnly] = useState(false)
+  const [appliedPreferences, setAppliedPreferences] =
+    useState<BuildPreferencesState>(emptyBuildPreferences)
+  const [draftPreferences, setDraftPreferences] =
+    useState<BuildPreferencesState>(emptyBuildPreferences)
+  const { dietSelections, rangeSelections, household, itemsOnly } = appliedPreferences
   const [showItemsOnlyTooltip, setShowItemsOnlyTooltip] = useState(false)
 
   const [mealGroups, setMealGroups] = useState<MealGroup[]>([])
@@ -1892,11 +1913,19 @@ function App() {
   useEffect(() => {
     if (!showPreferences) return
     const prevOverflow = document.body.style.overflow
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setDraftPreferences(copyBuildPreferences(appliedPreferences))
+      setShowItemsOnlyTooltip(false)
+      setShowPreferences(false)
+    }
     document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKeyDown)
     return () => {
       document.body.style.overflow = prevOverflow
+      document.removeEventListener('keydown', onKeyDown)
     }
-  }, [showPreferences])
+  }, [showPreferences, appliedPreferences])
 
   useEffect(() => {
     if (!removeConfirmTarget) return
@@ -2091,16 +2120,22 @@ function App() {
   const visibleMealCount = mealGroups.filter((m) => !m.removed).length
   const hasVisibleMeals = visibleMealCount > 0
   const hasVisibleEssentials = essentials.length > 0
-  const essentialsMetaLine = (() => {
-    const prefs = [...dietSelections, ...rangeSelections]
-    const prefix = prefs.length ? `${prefs.join(' • ')} • ` : ''
-    return `${prefix}${essentials.length} items • ${formatCurrency(essentialsTotal)}`
-  })()
+  const essentialsMetaLine = `${essentials.length} items • ${formatCurrency(essentialsTotal)}`
+
+  function openBuildPreferences() {
+    setDraftPreferences(copyBuildPreferences(appliedPreferences))
+    setShowItemsOnlyTooltip(false)
+    setShowPreferences(true)
+  }
+
+  function dismissBuildPreferences() {
+    setDraftPreferences(copyBuildPreferences(appliedPreferences))
+    setShowItemsOnlyTooltip(false)
+    setShowPreferences(false)
+  }
 
   function applyPreferences() {
-    // Preferences (diet, range, household, items-only) are already reflected in
-    // state via their chip handlers. Apply simply closes the modal — the list
-    // is only ever populated via the Build shop CTA.
+    setAppliedPreferences(copyBuildPreferences(draftPreferences))
     setShowItemsOnlyTooltip(false)
     setShowPreferences(false)
   }
@@ -2223,11 +2258,21 @@ function App() {
   }
 
   function toggleDiet(value: DietOption) {
-    setDietSelections((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]))
+    setDraftPreferences((prev) => ({
+      ...prev,
+      dietSelections: prev.dietSelections.includes(value)
+        ? prev.dietSelections.filter((option) => option !== value)
+        : [...prev.dietSelections, value],
+    }))
   }
 
   function toggleRange(value: RangeOption) {
-    setRangeSelections((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]))
+    setDraftPreferences((prev) => ({
+      ...prev,
+      rangeSelections: prev.rangeSelections.includes(value)
+        ? prev.rangeSelections.filter((option) => option !== value)
+        : [...prev.rangeSelections, value],
+    }))
   }
 
   function changeMealQty(mealId: string, ingredientId: string, delta: number) {
@@ -3469,12 +3514,7 @@ function App() {
                 }}
                 aria-invalid={listInputError ? true : undefined}
                 aria-describedby={
-                  [
-                    listInputError ? 'list-input-error' : null,
-                    uploadReviewPending ? 'upload-review-hint' : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' ') || undefined
+                  listInputError ? 'list-input-error' : undefined
                 }
                 aria-label="Build a shop list input"
               />
@@ -3492,54 +3532,47 @@ function App() {
                 listId={autocompleteListId}
               />
             </div>
-            {uploadReviewPending && inputValue.trim() ? (
-              <p id="upload-review-hint" className="mt-2 text-[14px] leading-5 text-[#53565A]">
-                Review the recognised items below, then select Build shop.
-              </p>
-            ) : null}
-            {imageProcessing ? (
-              <p className="mt-2 text-[14px] leading-5 text-[#53565A]">Reading your list…</p>
-            ) : null}
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className={`flex h-[28px] items-center justify-start gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333] ${visibleUploadedFileName ? 'max-w-[200px] overflow-hidden' : 'min-w-0 w-auto max-w-full'}`}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <span className="shrink-0">
-                    <IconUploadImage />
-                  </span>
+              <div className="grid w-full min-w-0 grid-cols-1 items-center gap-2 min-[360px]:grid-cols-[minmax(0,1fr)_max-content] sm:w-auto sm:grid-cols-[180px_max-content]">
+                <div className="flex h-[28px] min-w-0 items-stretch overflow-hidden border border-solid border-[#333] bg-white text-[16px] leading-6 text-[#333]">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center justify-start gap-2 overflow-hidden py-0.5 pl-2 text-left focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#154734]"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label={visibleUploadedFileName ? `Replace uploaded file ${visibleUploadedFileName}` : 'Upload a list'}
+                  >
+                    <span className="shrink-0">
+                      <IconUploadImage />
+                    </span>
+                    <span
+                      className="min-w-0 flex-1 truncate whitespace-nowrap"
+                      title={visibleUploadedFileName || undefined}
+                    >
+                      {visibleUploadedFileName || 'Upload a list'}
+                    </span>
+                  </button>
                   {visibleUploadedFileName ? (
-                    <>
-                      <span className="min-w-0 flex-1 truncate whitespace-nowrap text-left">{visibleUploadedFileName}</span>
-                      <span
-                        role="button"
-                        aria-label="Remove uploaded image"
-                        className="ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center text-[14px] leading-none"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          clearUploadedFile()
-                        }}
-                      >
-                        ×
-                      </span>
-                    </>
-                  ) : (
-                    <span className="whitespace-nowrap">Upload a list</span>
-                  )}
-                </button>
+                    <button
+                      type="button"
+                      aria-label={`Remove uploaded file ${visibleUploadedFileName}`}
+                      className="inline-flex w-7 shrink-0 items-center justify-center text-[14px] leading-none focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#154734]"
+                      onClick={clearUploadedFile}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadFile(e.target.files?.[0])} />
                 <button
                   type="button"
-                  className="flex h-[28px] max-w-full items-center gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
+                  className="flex h-[28px] shrink-0 items-center gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
                   aria-label={`Build Preferences, ${activeBuildPreferencesCount} selected`}
-                  onClick={() => setShowPreferences(true)}
+                  onClick={openBuildPreferences}
                 >
                   <span className="shrink-0">
                     <IconPreferences />
                   </span>
-                  <span className="min-w-0 truncate whitespace-nowrap">
+                  <span className="whitespace-nowrap">
                     Build Preferences ({activeBuildPreferencesCount})
                   </span>
                 </button>
@@ -3556,7 +3589,7 @@ function App() {
                 {catalogLoading
                   ? 'Building your draft shop…'
                   : imageProcessing
-                    ? 'Reading your list…'
+                    ? 'Analysing your list…'
                     : '✦ Build shop'}
               </button>
             </div>
@@ -3619,7 +3652,7 @@ function App() {
                 const mealItems = meal.ingredients.length
                 const mealPrice = meal.ingredients.reduce((sum, i) => (i.selected ? sum + i.price * i.qty : sum), 0)
                 const methodUrl = methodUrlForMeal(meal)
-                const metaLead = [meal.dietLabel, `${mealItems} items`, meal.serves].filter(Boolean).join(' • ')
+                const metaLead = `${mealItems} items`
                 return (
                   <article key={meal.id} className="border border-[#ddd] bg-white">
                     <div className="flex items-start gap-3 px-4 py-3 md:px-5 md:py-3.5">
@@ -3962,10 +3995,7 @@ function App() {
         <div
           className="fixed inset-0 z-20 flex bg-black/30 sm:items-center sm:justify-center"
           onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowItemsOnlyTooltip(false)
-              setShowPreferences(false)
-            }
+            if (e.target === e.currentTarget) dismissBuildPreferences()
           }}
         >
           {/* Modal panel — full-screen on mobile, centred sheet on sm+ */}
@@ -3980,10 +4010,7 @@ function App() {
                 <button
                   aria-label="Close"
                   className="flex shrink-0 items-center justify-center text-[#333]"
-                  onClick={() => {
-                    setShowItemsOnlyTooltip(false)
-                    setShowPreferences(false)
-                  }}
+                  onClick={dismissBuildPreferences}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
@@ -4043,15 +4070,17 @@ function App() {
                   <button
                     type="button"
                     role="switch"
-                    aria-checked={itemsOnly}
+                    aria-checked={draftPreferences.itemsOnly}
                     aria-label="Items only"
-                    onClick={() => setItemsOnly((v) => !v)}
-                    className={`inline-flex min-w-[52px] flex-col justify-center rounded-[16px] p-[2px] transition-colors ${itemsOnly ? 'items-end bg-[#78BE20]' : 'items-start bg-[#A9A9A9]'}`}
+                    onClick={() =>
+                      setDraftPreferences((prev) => ({ ...prev, itemsOnly: !prev.itemsOnly }))
+                    }
+                    className={`inline-flex min-w-[52px] flex-col justify-center rounded-[16px] p-[2px] transition-colors ${draftPreferences.itemsOnly ? 'items-end bg-[#78BE20]' : 'items-start bg-[#A9A9A9]'}`}
                   >
                     <span
-                      className={`flex size-6 items-center justify-center rounded-[16px] transition-colors ${itemsOnly ? 'bg-[#333] shadow-[0px_2px_1px_rgba(51,51,51,0.2)]' : 'bg-white shadow-[0px_2px_2px_rgba(51,51,51,0.2)]'}`}
+                      className={`flex size-6 items-center justify-center rounded-[16px] transition-colors ${draftPreferences.itemsOnly ? 'bg-[#333] shadow-[0px_2px_1px_rgba(51,51,51,0.2)]' : 'bg-white shadow-[0px_2px_2px_rgba(51,51,51,0.2)]'}`}
                     >
-                      {itemsOnly ? (
+                      {draftPreferences.itemsOnly ? (
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                           <path d="M2.6 6.2 4.9 8.4 9.4 3.7" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
@@ -4066,7 +4095,7 @@ function App() {
                 <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Diet</p>
                 <div className="flex flex-wrap gap-2">
                   {(['Vegetarian', 'Vegan', 'Gluten free', 'Pescatarian'] as DietOption[]).map((option) => {
-                    const sel = dietSelections.includes(option)
+                    const sel = draftPreferences.dietSelections.includes(option)
                     return (
                       <button
                         key={option}
@@ -4091,7 +4120,7 @@ function App() {
                 <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Range</p>
                 <div className="flex flex-wrap gap-2">
                   {(['No 1 Range', 'Essentials', 'Organic'] as RangeOption[]).map((option) => {
-                    const sel = rangeSelections.includes(option)
+                    const sel = draftPreferences.rangeSelections.includes(option)
                     return (
                       <button
                         key={option}
@@ -4116,11 +4145,16 @@ function App() {
                 <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Household</p>
                 <div className="flex flex-wrap gap-2">
                   {(['Serves 1', 'Serves 2', 'Serves 3', 'Serves 4', 'Serves 5', 'Serves 6+'] as HouseholdOption[]).map((option) => {
-                    const sel = household === option
+                    const sel = draftPreferences.household === option
                     return (
                       <button
                         key={option}
-                        onClick={() => setHousehold(option)}
+                        onClick={() =>
+                          setDraftPreferences((prev) => ({
+                            ...prev,
+                            household: prev.household === option ? null : option,
+                          }))
+                        }
                         className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
                       >
                         {option}
@@ -4144,10 +4178,7 @@ function App() {
                 <button
                   className="flex flex-1 items-center justify-center border border-[#333] px-5 py-2 text-[16px] leading-6 text-[#333]"
                   onClick={() => {
-                    setDietSelections([])
-                    setRangeSelections([])
-                    setHousehold(null)
-                    setItemsOnly(false)
+                    setDraftPreferences(emptyBuildPreferences())
                     setShowItemsOnlyTooltip(false)
                   }}
                 >
