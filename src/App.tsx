@@ -39,16 +39,25 @@ import {
 type DietOption = 'Vegetarian' | 'Vegan' | 'Gluten free' | 'Pescatarian'
 type RangeOption = 'No 1 Range' | 'Essentials' | 'Organic'
 type HouseholdOption = 'Serves 1' | 'Serves 2' | 'Serves 3' | 'Serves 4' | 'Serves 5' | 'Serves 6+'
-type SwapRefinement = 'All' | 'Organic' | 'Vegan' | 'Vegetarian' | 'Gluten-free' | 'Essential' | 'No.1'
+type SwapRefinement =
+  | 'All'
+  | 'Offers'
+  | 'Essential'
+  | 'Organic'
+  | 'No.1'
+  | 'Vegetarian'
+  | 'Vegan'
+  | 'Gluten-free'
 
 const SWAP_REFINEMENT_OPTIONS: SwapRefinement[] = [
   'All',
-  'Organic',
-  'Vegan',
-  'Vegetarian',
-  'Gluten-free',
+  'Offers',
   'Essential',
+  'Organic',
   'No.1',
+  'Vegetarian',
+  'Vegan',
+  'Gluten-free',
 ]
 
 type BuildPreferencesState = {
@@ -168,6 +177,11 @@ function normalizedSwapProductMetadata(product: WaitroseCatalogItem): {
   return { text, tokens: new Set(text.split(' ').filter(Boolean)) }
 }
 
+function productHasActiveOffer(product: WaitroseCatalogItem): boolean {
+  const offer = product.offers?.trim()
+  return Boolean(offer)
+}
+
 function filterPoolBySwapRefinement(
   products: WaitroseCatalogItem[],
   refinement: SwapRefinement,
@@ -176,6 +190,8 @@ function filterPoolBySwapRefinement(
   return products.filter((p) => {
     const { text, tokens } = normalizedSwapProductMetadata(p)
     switch (refinement) {
+      case 'Offers':
+        return productHasActiveOffer(p)
       case 'Organic':
         return (
           tokens.has('organic') ||
@@ -4344,7 +4360,14 @@ function App() {
                         ) : (
                           <span className="flex-shrink-0 text-2xl">🛒</span>
                         )}
-                        <span className="text-sm text-[#1a1a1a]">{choice.name}</span>
+                        <div className="min-w-0">
+                          <span className="text-sm text-[#1a1a1a]">{choice.name}</span>
+                          {choice.offers?.trim() ? (
+                            <p className="mt-1 text-[12px] font-medium leading-4 text-[#A6192E]">
+                              {choice.offers.trim()}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="flex items-center justify-between border-t border-[#ddd] px-4 py-3 md:border-t-0">
                         <div>
