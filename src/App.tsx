@@ -272,6 +272,7 @@ function mergeAppendBuildOntoTrolley(
     }
   }
   for (const e of essentials) {
+    if (!e.selected) continue
     incoming.push({
       id: crypto.randomUUID(),
       name: e.name,
@@ -2143,10 +2144,26 @@ function App() {
     .filter((m) => !m.removed)
     .flatMap((m) => m.ingredients)
     .reduce((sum, i) => (i.selected ? sum + i.price * i.qty : sum), 0)
-  const essentialsTotal = essentials.reduce((sum, i) => sum + i.price * i.qty, 0)
+  const essentialsTotal = essentials.reduce(
+    (sum, i) => (i.selected ? sum + i.price * i.qty : sum),
+    0,
+  )
   const estimatedTotal = mealsTotal + essentialsTotal
   const displayTotal = generated ? estimatedTotal : 0
-  const canAddToTrolley = generated && displayTotal > 0
+  /** Sum of quantities for currently selected meal ingredients + essentials. */
+  const unitsForTrolleyAdd = (() => {
+    let n = 0
+    for (const m of mealGroups.filter((x) => !x.removed)) {
+      for (const i of m.ingredients) {
+        if (i.selected) n += i.qty
+      }
+    }
+    for (const e of essentials) {
+      if (e.selected) n += e.qty
+    }
+    return n
+  })()
+  const canAddToTrolley = generated && unitsForTrolleyAdd > 0
   const hasBuildProducts =
     generated &&
     (mealGroups.some((meal) => !meal.removed && meal.ingredients.length > 0) || essentials.length > 0)
@@ -2163,27 +2180,14 @@ function App() {
     return () => ro.disconnect()
   }, [showBuildFooter])
 
-  /** Sum of line qty for selected meal ingredients + all essentials (matches trolley monetary total scope). */
-  const unitsForTrolleyAdd = (() => {
-    let n = 0
-    for (const m of mealGroups.filter((x) => !x.removed)) {
-      for (const i of m.ingredients) {
-        if (i.selected) n += i.qty
-      }
-    }
-    for (const e of essentials) {
-      n += e.qty
-    }
-    return n
-  })()
-
   const trolleyMoneyTotal = trolleyLines.reduce((s, l) => s + l.price * l.qty, 0)
   const trolleyUnitCount = trolleyLines.reduce((s, l) => s + l.qty, 0)
 
   const visibleMealCount = mealGroups.filter((m) => !m.removed).length
   const hasVisibleMeals = visibleMealCount > 0
   const hasVisibleEssentials = essentials.length > 0
-  const essentialsMetaLine = `${essentials.length} items • ${formatCurrency(essentialsTotal)}`
+  const selectedEssentialsCount = essentials.reduce((count, item) => (item.selected ? count + item.qty : count), 0)
+  const essentialsMetaLine = `${selectedEssentialsCount} item${selectedEssentialsCount === 1 ? '' : 's'} • ${formatCurrency(essentialsTotal)}`
 
   function openBuildPreferences() {
     setDraftPreferences(copyBuildPreferences(appliedPreferences))
@@ -2348,7 +2352,7 @@ function App() {
               ingredients: meal.ingredients.map((item) => {
                 if (item.id !== ingredientId) return item
                 const newQty = Math.max(0, item.qty + delta)
-                return { ...item, qty: newQty, selected: newQty > 0 }
+                return { ...item, qty: newQty }
               }),
             },
       ),
@@ -2360,7 +2364,7 @@ function App() {
       prev.map((item) => {
         if (item.id !== id) return item
         const newQty = Math.max(0, item.qty + delta)
-        return { ...item, qty: newQty, selected: newQty > 0 }
+        return { ...item, qty: newQty }
       }),
     )
   }
@@ -3714,7 +3718,10 @@ function App() {
                 <h2 className="mb-2 text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Meals</h2>
                 <div className="flex flex-col gap-2">
                   {mealGroups.filter((meal) => !meal.removed).map((meal) => {
-                const mealItems = meal.ingredients.length
+                const mealItems = meal.ingredients.reduce(
+                  (count, item) => (item.selected ? count + item.qty : count),
+                  0,
+                )
                 const mealPrice = meal.ingredients.reduce((sum, i) => (i.selected ? sum + i.price * i.qty : sum), 0)
                 const methodUrl = methodUrlForMeal(meal)
                 const metaLead = `${mealItems} items`
