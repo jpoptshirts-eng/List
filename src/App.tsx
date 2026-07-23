@@ -15,9 +15,12 @@ import {
 } from './lib/inputExperience'
 import { lineMatchesManualEssential, rankCatalogHitsWithPersonalization, rankProductsForEntry } from './lib/listEntryPrediction'
 import {
+  pickSwapRetrievalIntent,
+  resolveItemIntent,
+} from './lib/customerIntent'
+import {
   isRecipeCatalogHit,
   filterSwapAlternatives,
-  resolveSwapIngredientIntent,
   swapSearchQuery,
 } from './lib/recipeIngredientMatch'
 import { getShopListLinesFromUserInput, isLikelyMealLine, isLikelyUiPlaceholderList } from './lib/parseShopList'
@@ -102,6 +105,11 @@ type Ingredient = {
   originalText?: string
   /** Recipe ingredient intent, e.g. "spaghetti" — used for swap alternatives. */
   ingredientIntent?: string
+  normalisedInput?: string
+  canonicalIntent?: string
+  selectedProductId?: string
+  selectedProductCategoryId?: string
+  selectedProductSubcategoryId?: string
 }
 
 type MealGroup = {
@@ -129,7 +137,12 @@ type Essential = {
   image: string
   productType?: string
   originalText?: string
+  normalisedInput?: string
+  canonicalIntent?: string
+  ingredientIntent?: string
   selectedProductId?: string
+  selectedProductCategoryId?: string
+  selectedProductSubcategoryId?: string
   manuallySelected?: boolean
 }
 
@@ -151,6 +164,11 @@ type SwapItem = {
   productType?: string
   intentQuery?: string
   ingredientIntent?: string
+  canonicalIntent?: string
+  normalisedInput?: string
+  originalInput?: string
+  selectedProductCategoryId?: string
+  selectedProductSubcategoryId?: string
 }
 type SwapTarget =
   | { kind: 'meal'; mealId: string; ingredientId: string; item: SwapItem }
@@ -229,11 +247,68 @@ function buildSwapAlternativePool(
   item: SwapItem,
   products: WaitroseCatalogItem[],
 ): WaitroseCatalogItem[] {
-  const intent = resolveSwapIngredientIntent(item.ingredientIntent, item.intentQuery, item.name)
+  const intent = pickSwapRetrievalIntent({
+    selectedProductSubcategoryId: item.selectedProductSubcategoryId,
+    selectedProductCategoryId: item.selectedProductCategoryId,
+    canonicalIntent: item.canonicalIntent,
+    ingredientIntent: item.ingredientIntent,
+    normalisedInput: item.normalisedInput,
+    originalInput: item.originalInput,
+    intentQuery: item.intentQuery,
+    productName: item.name,
+    productType: item.productType,
+  })
   const query = swapSearchQuery(intent)
-  const sameCategory = filterSwapAlternatives(intent, products)
+
+  // Prefer taxonomy-aware filter; if it yields nothing (e.g. short aliases before
+  // resolution, or missing category metadata), fall back to full-catalog search
+  // using the same expandQuery path as add-item search.
+  let sameCategory = filterSwapAlternatives(intent, products)
+  if (sameCategory.length === 0) {
+    sameCategory = products
+  }
+
   const ordered = topCatalogMatches(query, sameCategory, sameCategory.length, item.name)
   return rankCatalogHitsWithPersonalization(query, ordered)
+}
+
+function swapItemFromEssential(item: Essential): SwapItem {
+  return {
+    name: item.name,
+    image: item.image,
+    price: item.price,
+    unitPrice: item.unitPrice,
+    productType: item.productType,
+    ingredientIntent: item.ingredientIntent ?? item.canonicalIntent,
+    canonicalIntent: item.canonicalIntent,
+    normalisedInput: item.normalisedInput,
+    originalInput: item.originalText,
+    intentQuery: item.canonicalIntent || item.normalisedInput || item.originalText || item.name,
+    selectedProductCategoryId: item.selectedProductCategoryId,
+    selectedProductSubcategoryId: item.selectedProductSubcategoryId,
+  }
+}
+
+function swapItemFromIngredient(item: Ingredient): SwapItem {
+  return {
+    name: item.name,
+    image: item.image,
+    price: item.price,
+    unitPrice: item.unitPrice,
+    productType: item.productType,
+    ingredientIntent: item.ingredientIntent ?? item.canonicalIntent,
+    canonicalIntent: item.canonicalIntent ?? item.ingredientIntent,
+    normalisedInput: item.normalisedInput,
+    originalInput: item.originalText,
+    intentQuery:
+      item.canonicalIntent ||
+      item.ingredientIntent ||
+      item.normalisedInput ||
+      item.originalText ||
+      item.name,
+    selectedProductCategoryId: item.selectedProductCategoryId,
+    selectedProductSubcategoryId: item.selectedProductSubcategoryId,
+  }
 }
 
 function mergeSwapCatalogs(
@@ -873,6 +948,38 @@ function resolveCatalogMatch(
   return { hit: null, usedFallback: false }
 }
 
+function attachIntentToEssential(
+  item: Essential,
+  originalInput: string,
+  product?: Partial<Pick<WaitroseCatalogItem, 'name' | 'productType' | 'grouping' | 'popmasType' | 'id'>> | null,
+  selectedProductId?: string,
+): Essential {
+  const intent = resolveItemIntent({
+    originalInput,
+    product: product?.name
+      ? {
+          name: product.name,
+          productType: product.productType,
+          grouping: product.grouping,
+          popmasType: product.popmasType,
+        }
+      : item.name
+        ? { name: item.name, productType: item.productType }
+        : null,
+    selectedProductId: selectedProductId ?? item.selectedProductId ?? product?.id,
+  })
+  return {
+    ...item,
+    originalText: intent.originalInput,
+    normalisedInput: intent.normalisedInput,
+    canonicalIntent: intent.canonicalIntent,
+    ingredientIntent: intent.canonicalIntent,
+    selectedProductId: intent.selectedProductId,
+    selectedProductCategoryId: intent.selectedProductCategoryId,
+    selectedProductSubcategoryId: intent.selectedProductSubcategoryId,
+  }
+}
+
 function essentialFromCatalogMatch(
   spec: { id: string; label: string; match: string },
   primaryProducts: WaitroseCatalogItem[],
@@ -882,29 +989,37 @@ function essentialFromCatalogMatch(
   if (hit) {
     return {
       usedFallback,
-      item: {
-        id: spec.id,
-        name: hit.name,
-        price: hit.price,
-        unitPrice: hit.unitPrice?.trim() || '—',
-        qty: 1,
-        selected: true,
-        image: ingredientThumb(hit),
-        productType: hit.productType,
-      },
+      item: attachIntentToEssential(
+        {
+          id: spec.id,
+          name: hit.name,
+          price: hit.price,
+          unitPrice: hit.unitPrice?.trim() || '—',
+          qty: 1,
+          selected: true,
+          image: ingredientThumb(hit),
+          productType: hit.productType,
+        },
+        spec.label,
+        hit,
+        hit.id,
+      ),
     }
   }
   return {
     usedFallback: false,
-    item: {
-      id: spec.id,
-      name: spec.label,
-      price: 0,
-      unitPrice: '—',
-      qty: 1,
-      selected: true,
-      image: '🛒',
-    },
+    item: attachIntentToEssential(
+      {
+        id: spec.id,
+        name: spec.label,
+        price: 0,
+        unitPrice: '—',
+        qty: 1,
+        selected: true,
+        image: '🛒',
+      },
+      spec.label,
+    ),
   }
 }
 
@@ -917,6 +1032,12 @@ function mealIngredientFromCatalog(
 ): { item: Ingredient; usedFallback: boolean } {
   const { hit, usedFallback } = resolveCatalogMatch(match, primaryProducts, fallbackProducts)
   if (hit) {
+    const intent = resolveItemIntent({
+      originalInput: match,
+      product: hit,
+      selectedProductId: hit.id,
+      recipeIngredientIntent: match,
+    })
     return {
       usedFallback,
       item: {
@@ -929,9 +1050,17 @@ function mealIngredientFromCatalog(
         selected: true,
         image: ingredientThumb(hit),
         productType: hit.productType,
+        originalText: match,
+        ingredientIntent: match,
+        normalisedInput: intent.normalisedInput,
+        canonicalIntent: intent.canonicalIntent,
+        selectedProductId: intent.selectedProductId,
+        selectedProductCategoryId: intent.selectedProductCategoryId,
+        selectedProductSubcategoryId: intent.selectedProductSubcategoryId,
       },
     }
   }
+  const intent = resolveItemIntent({ originalInput: match, recipeIngredientIntent: match })
   return {
     usedFallback: false,
     item: {
@@ -943,6 +1072,10 @@ function mealIngredientFromCatalog(
       qty: 1,
       selected: true,
       image: '🛒',
+      originalText: match,
+      ingredientIntent: match,
+      normalisedInput: intent.normalisedInput,
+      canonicalIntent: intent.canonicalIntent,
     },
   }
 }
@@ -1015,6 +1148,21 @@ function resolveRecipeIngredient(
           matched: true,
           originalText: originalTextForLogging,
           ingredientIntent: recipeIngredient.name,
+          ...(() => {
+            const intent = resolveItemIntent({
+              originalInput: originalTextForLogging || recipeIngredient.name,
+              product: hit,
+              selectedProductId: hit.id,
+              recipeIngredientIntent: recipeIngredient.name,
+            })
+            return {
+              normalisedInput: intent.normalisedInput,
+              canonicalIntent: intent.canonicalIntent,
+              selectedProductId: intent.selectedProductId,
+              selectedProductCategoryId: intent.selectedProductCategoryId,
+              selectedProductSubcategoryId: intent.selectedProductSubcategoryId,
+            }
+          })(),
         },
       }
     }
@@ -1043,6 +1191,16 @@ function resolveRecipeIngredient(
       fallbackReason: 'no-popmas-match',
       originalText: originalTextForLogging,
       ingredientIntent: recipeIngredient.name,
+      ...(() => {
+        const intent = resolveItemIntent({
+          originalInput: originalTextForLogging || recipeIngredient.name,
+          recipeIngredientIntent: recipeIngredient.name,
+        })
+        return {
+          normalisedInput: intent.normalisedInput,
+          canonicalIntent: intent.canonicalIntent,
+        }
+      })(),
     },
   }
 }
@@ -1224,20 +1382,29 @@ function predictEssentialForLine(
     preferVegetarian: dietSelections.includes('Vegetarian'),
   })
   if (prediction) {
+    const catalogHit =
+      [...primaryProducts, ...fallbackProducts].find((p) => p.name === prediction.name) ?? null
     return {
       usedFallback: prediction.usedFallback,
-      item: {
-        id,
-        name: prediction.name,
-        price: prediction.price,
-        unitPrice: prediction.unitPrice,
-        qty: 1,
-        selected: true,
-        image: prediction.image,
-        productType: prediction.productType,
-        originalText: label,
-        selectedProductId: prediction.selectedProductId,
-      },
+      item: attachIntentToEssential(
+        {
+          id,
+          name: prediction.name,
+          price: prediction.price,
+          unitPrice: prediction.unitPrice,
+          qty: 1,
+          selected: true,
+          image: prediction.image,
+          productType: prediction.productType,
+          originalText: label,
+          selectedProductId: prediction.selectedProductId ?? catalogHit?.id,
+        },
+        label,
+        catalogHit
+          ? catalogHit
+          : { name: prediction.name, productType: prediction.productType },
+        prediction.selectedProductId ?? catalogHit?.id,
+      ),
     }
   }
   return essentialFromCatalogMatch({ id, label, match: label }, primaryProducts, fallbackProducts)
@@ -2391,6 +2558,21 @@ function App() {
                         matched: true,
                         fallbackReason: undefined,
                         ingredientIntent: item.ingredientIntent,
+                        ...(() => {
+                          const intent = resolveItemIntent({
+                            originalInput: item.originalText || item.canonicalIntent || item.name,
+                            product: choice,
+                            selectedProductId: choice.id,
+                            recipeIngredientIntent: item.ingredientIntent,
+                          })
+                          return {
+                            normalisedInput: intent.normalisedInput,
+                            canonicalIntent: intent.canonicalIntent,
+                            selectedProductId: intent.selectedProductId,
+                            selectedProductCategoryId: intent.selectedProductCategoryId,
+                            selectedProductSubcategoryId: intent.selectedProductSubcategoryId,
+                          }
+                        })(),
                       },
                 ),
               },
@@ -2401,14 +2583,19 @@ function App() {
         prev.map((item) =>
           item.id !== swapTarget.id
             ? item
-            : {
-                ...item,
-                name: choice.name,
-                price: choice.price,
-                unitPrice: choice.unitPrice,
-                image: catalogProductImage(choice.imageUrl),
-                productType: choice.productType,
-              },
+            : attachIntentToEssential(
+                {
+                  ...item,
+                  name: choice.name,
+                  price: choice.price,
+                  unitPrice: choice.unitPrice,
+                  image: catalogProductImage(choice.imageUrl),
+                  productType: choice.productType,
+                },
+                item.originalText || item.canonicalIntent || item.name,
+                choice,
+                choice.id,
+              ),
         ),
       )
     }
@@ -2712,18 +2899,24 @@ function App() {
 
   function suggestionToEssential(suggestion: ProductSuggestion, originalText: string): Essential {
     const enriched = enrichSuggestionFromCatalog(suggestion, autocompleteCatalog, originalText)
-    return {
-      id: crypto.randomUUID(),
-      name: enriched.size ? `${enriched.title} (${enriched.size})` : enriched.title,
-      price: enriched.price ?? 0,
-      unitPrice: enriched.unitPrice ?? '—',
-      qty: 1,
-      selected: true,
-      image: enriched.image,
+    const name = enriched.size ? `${enriched.title} (${enriched.size})` : enriched.title
+    return attachIntentToEssential(
+      {
+        id: crypto.randomUUID(),
+        name,
+        price: enriched.price ?? 0,
+        unitPrice: enriched.unitPrice ?? '—',
+        qty: 1,
+        selected: true,
+        image: enriched.image,
+        originalText,
+        selectedProductId: enriched.id,
+        manuallySelected: true,
+      },
       originalText,
-      selectedProductId: enriched.id,
-      manuallySelected: true,
-    }
+      { name, productType: undefined },
+      enriched.id,
+    )
   }
 
   function addProductFromSuggestion(suggestion: ProductSuggestion) {
@@ -3852,15 +4045,7 @@ function App() {
                                   kind: 'meal',
                                   mealId: meal.id,
                                   ingredientId: item.id,
-                                  item: {
-                                    name: item.name,
-                                    image: item.image,
-                                    price: item.price,
-                                    unitPrice: item.unitPrice,
-                                    productType: item.productType,
-                                    ingredientIntent: item.ingredientIntent,
-                                    intentQuery: item.originalText || item.name,
-                                  },
+                                  item: swapItemFromIngredient(item),
                                 })
                               }
                               onQtyDelta={(d) => changeMealQty(meal.id, item.id, d)}
@@ -3900,14 +4085,7 @@ function App() {
                           setSwapTarget({
                             kind: 'essential',
                             id: item.id,
-                            item: {
-                              name: item.name,
-                              image: item.image,
-                              price: item.price,
-                              unitPrice: item.unitPrice,
-                              productType: item.productType,
-                              intentQuery: item.originalText || item.name,
-                            },
+                            item: swapItemFromEssential(item),
                           })
                         }
                         onQtyDelta={(d) => changeEssentialQty(item.id, d)}

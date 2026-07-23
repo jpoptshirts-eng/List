@@ -1,13 +1,13 @@
 import type { RecipeIngredient } from '../data/mealRecipes'
+import {
+  aliasCanonicalIntent,
+  inferCanonicalIntentFromProduct,
+  normaliseCustomerInput,
+} from './customerIntent'
 import type { WaitroseCatalogItem } from './waitroseCatalog'
 
 function norm(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[\u2019\u2018]/g, "'")
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return normaliseCustomerInput(value)
 }
 
 function productHay(product: WaitroseCatalogItem): string {
@@ -82,6 +82,37 @@ const INGREDIENT_RULES: IngredientRule[] = [
     suitable: (p) => {
       const hay = productHay(p)
       return hay.includes('puree') || hay.includes('purée') || hay.includes('passata')
+    },
+  },
+  {
+    match: (i) => i === 'orange juice' || i.includes('orange juice'),
+    suitable: (p) => {
+      const hay = productHay(p)
+      if (!hay.includes('orange') || !hay.includes('juice')) return false
+      if (hay.includes('apple') || hay.includes('squash') || hay.includes('cordial')) return false
+      if (hay.includes('cheesecake') || hay.includes('dessert') || hay.includes('yogurt') || hay.includes('yoghurt')) {
+        return false
+      }
+      return true
+    },
+  },
+  {
+    match: (i) => i === 'semi-skimmed milk' || i.includes('semi skimmed milk'),
+    suitable: (p) => {
+      const hay = productHay(p)
+      if (!hay.includes('milk')) return false
+      if (hay.includes('oat') || hay.includes('almond') || hay.includes('coconut') || hay.includes('conditioner')) {
+        return false
+      }
+      return hay.includes('semi') && hay.includes('skimmed')
+    },
+  },
+  {
+    match: (i) => i === 'wholemeal bread' || i.includes('wholemeal bread'),
+    suitable: (p) => {
+      const hay = productHay(p)
+      if (hay.includes('flour') || hay.includes('crumb')) return false
+      return hay.includes('wholemeal') && (hay.includes('bread') || hay.includes('loaf'))
     },
   },
 ]
@@ -163,26 +194,24 @@ const SWAP_SEARCH_QUERY: Record<string, string> = {
   spaghetti: 'spaghetti pasta',
   'italian herbs': 'mixed herbs',
   parmesan: 'parmigiano reggiano',
+  'orange juice': 'orange juice',
+  'semi-skimmed milk': 'semi skimmed milk',
+  'wholemeal bread': 'wholemeal bread',
+  tomatoes: 'tomatoes',
+  'spaghetti bolognese': 'spaghetti bolognese',
 }
 
 /** Best POPMAS search query for swap alternatives from a recipe ingredient intent. */
 export function swapSearchQuery(ingredientIntent: string): string {
   const key = norm(ingredientIntent)
-  return SWAP_SEARCH_QUERY[key] ?? ingredientIntent
+  const aliased = aliasCanonicalIntent(key)
+  const resolved = aliased ?? key
+  return SWAP_SEARCH_QUERY[resolved] ?? SWAP_SEARCH_QUERY[key] ?? resolved
 }
 
 /** Infer recipe ingredient intent from a wrongly matched product name (legacy rows). */
 export function inferIngredientIntentFromProductName(productName: string): string | null {
-  const hay = norm(productName)
-  if (/\bmilk\b/.test(hay)) return 'milk'
-  if (/\beggs?\b/.test(hay)) return 'egg'
-  if (/\bspaghetti\b/.test(hay)) return 'spaghetti'
-  if (/\bparmesan\b|\bparmigiano\b|\breggiano\b/.test(hay)) return 'parmesan'
-  if (/\bmixed herbs\b|\bitalian herbs\b/.test(hay)) return 'italian herbs'
-  if (/\bmince\b|\bminced beef\b/.test(hay)) return 'beef mince'
-  if (/\bchopped tomato/.test(hay)) return 'chopped tomatoes'
-  if (/\btomato puree\b|\btomato purée\b/.test(hay)) return 'tomato puree'
-  return null
+  return inferCanonicalIntentFromProduct({ name: productName })
 }
 
 export function resolveSwapIngredientIntent(
@@ -190,10 +219,18 @@ export function resolveSwapIngredientIntent(
   intentQuery: string | undefined,
   productName: string,
 ): string {
-  if (ingredientIntent?.trim()) return ingredientIntent.trim()
+  if (ingredientIntent?.trim()) {
+    const normalised = norm(ingredientIntent)
+    return aliasCanonicalIntent(normalised) ?? ingredientIntent.trim()
+  }
   const inferred = inferIngredientIntentFromProductName(productName)
   if (inferred) return inferred
-  if (intentQuery?.trim() && norm(intentQuery) !== norm(productName)) return intentQuery.trim()
+  if (intentQuery?.trim()) {
+    const normalised = norm(intentQuery)
+    const aliased = aliasCanonicalIntent(normalised)
+    if (aliased) return aliased
+    if (normalised !== norm(productName)) return intentQuery.trim()
+  }
   return intentQuery?.trim() ?? productName
 }
 
@@ -202,6 +239,7 @@ export function filterSwapAlternatives(
   ingredientIntent: string,
   products: WaitroseCatalogItem[],
 ): WaitroseCatalogItem[] {
-  const ingredient: RecipeIngredient = { name: ingredientIntent, required: true }
+  const resolved = resolveSwapIngredientIntent(ingredientIntent, ingredientIntent, ingredientIntent)
+  const ingredient: RecipeIngredient = { name: resolved, required: true }
   return products.filter((product) => isRecipeCatalogHit(ingredient, product))
 }

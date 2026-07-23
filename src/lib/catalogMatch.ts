@@ -1,14 +1,15 @@
 import type { WaitroseCatalogItem } from './waitroseCatalog'
+import { aliasCanonicalIntent, normaliseCustomerInput } from './customerIntent'
 
 function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[()]/g, ' ')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
+  return normaliseCustomerInput(s)
 }
 
 const GROCERY_CANONICAL_TERMS = [
+  'orange juice',
+  'apple juice',
+  'semi skimmed milk',
+  'wholemeal bread',
   'milk',
   'bread',
   'eggs',
@@ -65,24 +66,39 @@ function correctCommonTypos(raw: string): string {
 
 const QUERY_ALIASES: Record<string, string[]> = {
   oj: ['orange juice'],
+  'o j': ['orange juice'],
+  'orange juice': ['orange juice'],
   juice: ['orange juice', 'apple juice', 'fruit juice'],
   'organic milk': ['organic milk', 'semi skimmed milk', 'whole milk', 'fresh milk', 'milk'],
   milk: ['semi skimmed milk', 'whole milk', 'fresh milk', 'milk'],
+  'semi skimmed': ['semi skimmed milk', 'semi-skimmed milk', 'milk'],
+  'semi skimmed milk': ['semi skimmed milk', 'semi-skimmed milk', 'milk'],
+  'semi-skimmed milk': ['semi skimmed milk', 'semi-skimmed milk', 'milk'],
+  'wholemeal loaf': ['wholemeal bread', 'wholemeal loaf', 'bread'],
+  'wholemeal bread': ['wholemeal bread', 'wholemeal loaf', 'bread'],
   'french bread': ['french bread', 'baguette', 'bread loaf', 'sliced bread'],
   bread: ['bread', 'loaf', 'sliced', 'wholemeal'],
   pasta: ['pasta', 'spaghetti', 'penne', 'fusilli', 'tagliatelle'],
   'cereal weetabix': ['weetabix', 'breakfast cereal', 'cereal'],
   'spag bol': ['spaghetti bolognese'],
   spagbol: ['spaghetti bolognese'],
+  toms: ['tomatoes'],
+  tomatoes: ['tomatoes'],
   'green thai curry': ['green thai curry', 'thai green curry', 'thai curry'],
 }
 
 function expandQuery(raw: string): string[] {
   const corrected = correctCommonTypos(raw)
-  const t = corrected.trim().toLowerCase()
-  const expanded = QUERY_ALIASES[t]
-  if (!expanded) return [corrected, raw].filter((v, i, arr) => v.length > 0 && arr.indexOf(v) === i)
-  return [...expanded, corrected, raw].filter((v, i, arr) => v.length > 0 && arr.indexOf(v) === i)
+  const normalised = normalize(corrected)
+  const aliased = aliasCanonicalIntent(normalised)
+  const t = normalised
+  const expanded = QUERY_ALIASES[t] ?? (aliased ? QUERY_ALIASES[aliased] ?? [aliased] : null)
+  if (!expanded) {
+    return [corrected, raw, normalised].filter((v, i, arr) => v.length > 0 && arr.indexOf(v) === i)
+  }
+  return [...expanded, aliased, corrected, raw, normalised].filter(
+    (v, i, arr): v is string => typeof v === 'string' && v.length > 0 && arr.indexOf(v) === i,
+  )
 }
 
 function tokenSet(s: string): Set<string> {

@@ -54,6 +54,7 @@ function inferCategoryFromProduct(title: string, size: string): string {
 
 export function inferCategory(term: string): string | null {
   const t = term.toLowerCase().trim()
+  if (t === 'oj' || t === 'o.j.' || t === 'o j' || t.includes('orange juice')) return 'juice'
   if (CATEGORY_DEFAULTS[t]) return CATEGORY_DEFAULTS[t]
   for (const [key, category] of Object.entries(CATEGORY_DEFAULTS)) {
     if (t.includes(key)) return category
@@ -187,6 +188,7 @@ function filterCatalogByCategory(
   query: string,
   catalogPool: WaitroseCatalogItem[],
 ): WaitroseCatalogItem[] {
+  const q = query.toLowerCase().trim()
   const category = inferCategory(query)
   if (!category || catalogPool.length === 0) return catalogPool
   return catalogPool.filter((p) => {
@@ -198,8 +200,12 @@ function filterCatalogByCategory(
     if (category === 'tea') return n.includes('tea')
     if (category === 'coffee') return n.includes('coffee')
     if (category === 'eggs') return n.includes('egg')
-    if (category === 'juice') return n.includes('juice')
-    return n.includes(category) || n.includes(query.toLowerCase())
+    if (category === 'juice') {
+      if (q === 'oj' || q.includes('orange')) return n.includes('orange') && n.includes('juice')
+      if (q.includes('apple')) return n.includes('apple') && n.includes('juice')
+      return n.includes('juice')
+    }
+    return n.includes(category) || n.includes(q)
   })
 }
 
