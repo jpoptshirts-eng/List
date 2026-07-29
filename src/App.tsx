@@ -3749,7 +3749,7 @@ function App() {
                     </svg>
                   </span>
                   {/* Message */}
-                  <p className="flex-1 text-[16px] leading-6 text-[#333]">Your list will be saved when you select 'Build shop'</p>
+                  <p className="flex-1 text-[16px] leading-6 text-[#333]">Your list will be saved when you click the ‘Add to List’ button.</p>
                   {/* Dismiss */}
                   <button
                     type="button"
@@ -3889,7 +3889,7 @@ function App() {
                   ref={preferencesButtonRef}
                   type="button"
                   className="flex h-[28px] shrink-0 items-center gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
-                  aria-label={`Build Preferences, ${activeBuildPreferencesCount} selected`}
+                  aria-label={`List preferences, ${activeBuildPreferencesCount} selected`}
                   aria-expanded={showPreferences}
                   aria-haspopup="dialog"
                   onClick={openBuildPreferences}
@@ -3898,7 +3898,7 @@ function App() {
                     <IconPreferences />
                   </span>
                   <span className="whitespace-nowrap">
-                    Build Preferences ({activeBuildPreferencesCount})
+                    List preferences ({activeBuildPreferencesCount})
                   </span>
                 </button>
               </div>
@@ -3915,7 +3915,7 @@ function App() {
                   ? 'Building your draft shop…'
                   : imageProcessing
                     ? 'Analysing your list…'
-                    : '✦ Build shop'}
+                    : 'Add to List'}
               </button>
             </div>
           </form>
@@ -4329,7 +4329,7 @@ function App() {
                   <button
                     type="button"
                     data-preferences-close
-                    aria-label="Close build preferences"
+                    aria-label="Close list preferences"
                     className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
                     onClick={dismissBuildPreferences}
                   >
