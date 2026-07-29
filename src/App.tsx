@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { recognize } from 'tesseract.js'
 import { MyTrolleyView, type TrolleyLine } from './components/my-trolley-view'
 import { EssentialProductPod, IconBin, IconChevronMeal, IconPen, RecipeProductPod } from './components/shopping-list-pods'
@@ -2091,6 +2092,15 @@ function App() {
   const buildFooterRef = useRef<HTMLElement | null>(null)
   const [buildFooterHeight, setBuildFooterHeight] = useState(0)
   const swapModalRef = useRef<HTMLDivElement | null>(null)
+  const preferencesModalRef = useRef<HTMLDivElement | null>(null)
+  const preferencesButtonRef = useRef<HTMLButtonElement | null>(null)
+  const preferencesScrollLockRef = useRef<{
+    overflow: string
+    position: string
+    top: string
+    width: string
+    scrollY: number
+  } | null>(null)
 
   useEffect(() => {
     if (!swapTarget) {
@@ -2185,20 +2195,70 @@ function App() {
 
   useEffect(() => {
     if (!showPreferences) return
-    const prevOverflow = document.body.style.overflow
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setDraftPreferences(copyBuildPreferences(appliedPreferences))
-      setShowItemsOnlyTooltip(false)
-      setShowPreferences(false)
+    const focusableSelector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const scrollY = window.scrollY
+    preferencesScrollLockRef.current = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+      scrollY,
     }
     document.body.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.top = `-${scrollY}px`
+    document.body.style.width = '100%'
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const modal = preferencesModalRef.current
+      const closeButton = modal?.querySelector<HTMLElement>('[data-preferences-close]')
+      ;(closeButton ?? modal?.querySelector<HTMLElement>(focusableSelector))?.focus()
+    })
+
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        dismissBuildPreferences()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const modal = preferencesModalRef.current
+      if (!modal) return
+      const focusable = Array.from(modal.querySelectorAll<HTMLElement>(focusableSelector))
+      if (focusable.length === 0) {
+        event.preventDefault()
+        modal.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
     document.addEventListener('keydown', onKeyDown)
     return () => {
-      document.body.style.overflow = prevOverflow
+      window.cancelAnimationFrame(focusFrame)
       document.removeEventListener('keydown', onKeyDown)
+      const locked = preferencesScrollLockRef.current
+      if (locked) {
+        document.body.style.overflow = locked.overflow
+        document.body.style.position = locked.position
+        document.body.style.top = locked.top
+        document.body.style.width = locked.width
+        window.scrollTo(0, locked.scrollY)
+        preferencesScrollLockRef.current = null
+      }
+      window.requestAnimationFrame(() => {
+        preferencesButtonRef.current?.focus()
+      })
     }
-  }, [showPreferences, appliedPreferences])
+  }, [showPreferences])
 
   useEffect(() => {
     if (!removeConfirmTarget) return
@@ -3826,9 +3886,12 @@ function App() {
                 </div>
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadFile(e.target.files?.[0])} />
                 <button
+                  ref={preferencesButtonRef}
                   type="button"
                   className="flex h-[28px] shrink-0 items-center gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
                   aria-label={`Build Preferences, ${activeBuildPreferencesCount} selected`}
+                  aria-expanded={showPreferences}
+                  aria-haspopup="dialog"
                   onClick={openBuildPreferences}
                 >
                   <span className="shrink-0">
@@ -4235,210 +4298,230 @@ function App() {
         </div>
       )}
 
-      {showPreferences && (
-        <div
-          className="fixed inset-0 z-20 flex bg-black/30 sm:items-center sm:justify-center"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) dismissBuildPreferences()
-          }}
-        >
-          {/* Modal panel — full-screen on mobile, centred sheet on sm+ */}
-          <div className="flex h-full w-full flex-col bg-white sm:h-auto sm:min-h-[677px] sm:max-h-[90vh] sm:max-w-[544px]">
-
-            {/* ── Title bar ── */}
-            <div className="shrink-0 bg-white">
-              <div className="flex items-center gap-2 px-5 py-4">
-                {/* Invisible spacer keeps title truly centred */}
-                <span className="w-4 shrink-0" />
-                <p className="flex-1 text-center text-[16px] leading-6 text-[#333]">Preferences</p>
-                <button
-                  aria-label="Close"
-                  className="flex shrink-0 items-center justify-center text-[#333]"
-                  onClick={dismissBuildPreferences}
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-                  </svg>
-                </button>
-              </div>
-              <div className="border-t border-[#ddd]" />
-            </div>
-
-            {/* ── Scrollable content ── */}
-            <div className="flex flex-1 flex-col gap-10 overflow-y-auto bg-[#f5f5f5] px-4 py-6 sm:px-5">
-              <p className="text-[16px] leading-6 text-[#333]">
-                Set your filters and start listing! We'll learn from your activity to automatically suggest the best matches for your household.
-              </p>
-
-              {/* Type */}
-              <div className="flex flex-col gap-2">
-                <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Type</p>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[16px] leading-6 text-[#333]">Items only</span>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        aria-label="What does items only mean?"
-                        className="text-[#53565A]"
-                        onClick={() => setShowItemsOnlyTooltip((v) => !v)}
-                      >
-                        <IconDisclaimerInfo />
-                      </button>
-                      {showItemsOnlyTooltip ? (
-                        <div className="absolute bottom-[calc(100%+10px)] left-0 z-20 w-[244px]">
-                          <div className="bg-[#333] p-4">
-                            <div className="flex items-start gap-3">
-                              <p className="flex-1 text-[14px] leading-5 text-white">
-                                Only show individual item essential products.
-                              </p>
-                              <button
-                                type="button"
-                                aria-label="Dismiss items only tooltip"
-                                className="text-white"
-                                onClick={() => setShowItemsOnlyTooltip(false)}
-                              >
-                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                                  <path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                                </svg>
-                              </button>
-                            </div>
-                          </div>
-                          <div className="absolute left-[-1px] top-full">
-                            <div className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[10px] border-l-transparent border-r-transparent border-t-[#333]" />
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
+      {showPreferences &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[110] flex bg-black/30 sm:items-center sm:justify-center"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) dismissBuildPreferences()
+            }}
+          >
+            {/* Modal panel — full-screen on mobile, centred sheet on sm+ */}
+            <div
+              ref={preferencesModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="build-preferences-title"
+              tabIndex={-1}
+              className="flex h-full max-h-[100dvh] w-full flex-col overflow-hidden bg-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] sm:h-auto sm:min-h-[677px] sm:max-h-[min(90vh,100dvh)] sm:max-w-[544px]"
+            >
+              {/* ── Title bar ── */}
+              <div className="relative z-10 shrink-0 bg-white">
+                <div className="flex items-center gap-2 px-5 py-4">
+                  {/* Invisible spacer keeps title truly centred */}
+                  <span className="w-4 shrink-0" aria-hidden="true" />
+                  <p
+                    id="build-preferences-title"
+                    className="flex-1 text-center text-[16px] leading-6 text-[#333]"
+                  >
+                    Preferences
+                  </p>
                   <button
                     type="button"
-                    role="switch"
-                    aria-checked={draftPreferences.itemsOnly}
-                    aria-label="Items only"
-                    onClick={() =>
-                      setDraftPreferences((prev) => ({ ...prev, itemsOnly: !prev.itemsOnly }))
-                    }
-                    className={`inline-flex min-w-[52px] flex-col justify-center rounded-[16px] p-[2px] transition-colors ${draftPreferences.itemsOnly ? 'items-end bg-[#78BE20]' : 'items-start bg-[#A9A9A9]'}`}
+                    data-preferences-close
+                    aria-label="Close build preferences"
+                    className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
+                    onClick={dismissBuildPreferences}
                   >
-                    <span
-                      className={`flex size-6 items-center justify-center rounded-[16px] transition-colors ${draftPreferences.itemsOnly ? 'bg-[#333] shadow-[0px_2px_1px_rgba(51,51,51,0.2)]' : 'bg-white shadow-[0px_2px_2px_rgba(51,51,51,0.2)]'}`}
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="border-t border-[#ddd]" />
+              </div>
+
+              {/* ── Scrollable content ── */}
+              <div className="flex min-h-0 flex-1 flex-col gap-10 overflow-y-auto bg-[#f5f5f5] px-4 py-6 sm:px-5">
+                <p className="text-[16px] leading-6 text-[#333]">
+                  Set your filters and start listing! We'll learn from your activity to automatically suggest the best matches for your household.
+                </p>
+
+                {/* Type */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Type</p>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[16px] leading-6 text-[#333]">Items only</span>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          aria-label="What does items only mean?"
+                          className="text-[#53565A]"
+                          onClick={() => setShowItemsOnlyTooltip((v) => !v)}
+                        >
+                          <IconDisclaimerInfo />
+                        </button>
+                        {showItemsOnlyTooltip ? (
+                          <div className="absolute bottom-[calc(100%+10px)] left-0 z-20 w-[244px]">
+                            <div className="bg-[#333] p-4">
+                              <div className="flex items-start gap-3">
+                                <p className="flex-1 text-[14px] leading-5 text-white">
+                                  Only show individual item essential products.
+                                </p>
+                                <button
+                                  type="button"
+                                  aria-label="Dismiss items only tooltip"
+                                  className="text-white"
+                                  onClick={() => setShowItemsOnlyTooltip(false)}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                                    <path d="M9 3L3 9M3 3l6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div className="absolute left-[-1px] top-full">
+                              <div className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[10px] border-l-transparent border-r-transparent border-t-[#333]" />
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={draftPreferences.itemsOnly}
+                      aria-label="Items only"
+                      onClick={() =>
+                        setDraftPreferences((prev) => ({ ...prev, itemsOnly: !prev.itemsOnly }))
+                      }
+                      className={`inline-flex min-w-[52px] flex-col justify-center rounded-[16px] p-[2px] transition-colors ${draftPreferences.itemsOnly ? 'items-end bg-[#78BE20]' : 'items-start bg-[#A9A9A9]'}`}
                     >
-                      {draftPreferences.itemsOnly ? (
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                          <path d="M2.6 6.2 4.9 8.4 9.4 3.7" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      ) : null}
-                    </span>
+                      <span
+                        className={`flex size-6 items-center justify-center rounded-[16px] transition-colors ${draftPreferences.itemsOnly ? 'bg-[#333] shadow-[0px_2px_1px_rgba(51,51,51,0.2)]' : 'bg-white shadow-[0px_2px_2px_rgba(51,51,51,0.2)]'}`}
+                      >
+                        {draftPreferences.itemsOnly ? (
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                            <path d="M2.6 6.2 4.9 8.4 9.4 3.7" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        ) : null}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Diet */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Diet</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['Vegetarian', 'Vegan', 'Gluten free', 'Pescatarian'] as DietOption[]).map((option) => {
+                      const sel = draftPreferences.dietSelections.includes(option)
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => toggleDiet(option)}
+                          className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
+                        >
+                          {option}
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            {sel
+                              ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                              : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
+                            }
+                          </svg>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Range */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Range</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['No 1 Range', 'Essentials', 'Organic'] as RangeOption[]).map((option) => {
+                      const sel = draftPreferences.rangeSelections.includes(option)
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => toggleRange(option)}
+                          className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
+                        >
+                          {option}
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            {sel
+                              ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                              : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
+                            }
+                          </svg>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Household */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Household</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['Serves 1', 'Serves 2', 'Serves 3', 'Serves 4', 'Serves 5', 'Serves 6+'] as HouseholdOption[]).map((option) => {
+                      const sel = draftPreferences.household === option
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() =>
+                            setDraftPreferences((prev) => ({
+                              ...prev,
+                              household: prev.household === option ? null : option,
+                            }))
+                          }
+                          className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
+                        >
+                          {option}
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                            {sel
+                              ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                              : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
+                            }
+                          </svg>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Footer CTAs ── */}
+              <div className="relative z-10 shrink-0 bg-white">
+                <div className="border-t border-[#ddd]" />
+                <div className="flex gap-5 p-5">
+                  <button
+                    type="button"
+                    className="flex flex-1 items-center justify-center border border-[#333] px-5 py-2 text-[16px] leading-6 text-[#333]"
+                    onClick={() => {
+                      setDraftPreferences(emptyBuildPreferences())
+                      setShowItemsOnlyTooltip(false)
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    className="flex flex-1 items-center justify-center bg-[#53565a] px-5 py-2 text-[16px] leading-6 text-white"
+                    onClick={applyPreferences}
+                  >
+                    Apply
                   </button>
                 </div>
               </div>
-
-              {/* Diet */}
-              <div className="flex flex-col gap-2">
-                <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Diet</p>
-                <div className="flex flex-wrap gap-2">
-                  {(['Vegetarian', 'Vegan', 'Gluten free', 'Pescatarian'] as DietOption[]).map((option) => {
-                    const sel = draftPreferences.dietSelections.includes(option)
-                    return (
-                      <button
-                        key={option}
-                        onClick={() => toggleDiet(option)}
-                        className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
-                      >
-                        {option}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                          {sel
-                            ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                            : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
-                          }
-                        </svg>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Range */}
-              <div className="flex flex-col gap-2">
-                <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Range</p>
-                <div className="flex flex-wrap gap-2">
-                  {(['No 1 Range', 'Essentials', 'Organic'] as RangeOption[]).map((option) => {
-                    const sel = draftPreferences.rangeSelections.includes(option)
-                    return (
-                      <button
-                        key={option}
-                        onClick={() => toggleRange(option)}
-                        className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
-                      >
-                        {option}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                          {sel
-                            ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                            : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
-                          }
-                        </svg>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Household */}
-              <div className="flex flex-col gap-2">
-                <p className="text-[14px] uppercase tracking-[2.8px] text-[#53565a]">Household</p>
-                <div className="flex flex-wrap gap-2">
-                  {(['Serves 1', 'Serves 2', 'Serves 3', 'Serves 4', 'Serves 5', 'Serves 6+'] as HouseholdOption[]).map((option) => {
-                    const sel = draftPreferences.household === option
-                    return (
-                      <button
-                        key={option}
-                        onClick={() =>
-                          setDraftPreferences((prev) => ({
-                            ...prev,
-                            household: prev.household === option ? null : option,
-                          }))
-                        }
-                        className={`flex items-center gap-3 rounded-full border px-3 py-1 text-[16px] leading-6 transition-colors ${sel ? 'border-[#333] bg-[#333] text-white' : 'border-[#a9a9a9] bg-white text-[#333]'}`}
-                      >
-                        {option}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                          {sel
-                            ? <path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                            : <><path d="M8 3v10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></>
-                          }
-                        </svg>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
             </div>
-
-            {/* ── Footer CTAs ── */}
-            <div className="shrink-0 bg-white">
-              <div className="border-t border-[#ddd]" />
-              <div className="flex gap-5 p-5">
-                <button
-                  className="flex flex-1 items-center justify-center border border-[#333] px-5 py-2 text-[16px] leading-6 text-[#333]"
-                  onClick={() => {
-                    setDraftPreferences(emptyBuildPreferences())
-                    setShowItemsOnlyTooltip(false)
-                  }}
-                >
-                  Clear
-                </button>
-                <button
-                  className="flex flex-1 items-center justify-center bg-[#53565a] px-5 py-2 text-[16px] leading-6 text-white"
-                  onClick={applyPreferences}
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
 
       {swapTarget && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/30 p-0 md:items-center md:p-4">
