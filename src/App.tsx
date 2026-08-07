@@ -1768,7 +1768,7 @@ function TrolleyIconWithBadge({ count, iconColor = '#333' }: { count: number; ic
       {count > 0 ? (
         <span
           className={[
-            'pointer-events-none absolute left-1/2 top-1/2 z-10 flex size-[18px] shrink-0 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#5B8226] font-medium leading-none text-white tabular-nums shadow-none',
+            'pointer-events-none absolute left-1/2 top-1/2 z-10 flex size-[18px] shrink-0 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-[#5B8226] font-normal leading-none text-white tabular-nums shadow-none',
             compactText ? 'text-[7px]' : 'text-[9px]',
           ].join(' ')}
           aria-hidden
@@ -1871,7 +1871,7 @@ function CuisinePicker({
                   aria-selected={selected}
                   className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-[14px] leading-5 transition-colors ${
                     selected
-                      ? 'bg-[#EEF4FF] font-medium text-[#007AFF]'
+                      ? 'bg-[#EEF4FF] font-normal text-[#007AFF]'
                       : 'font-normal text-[#53565A] hover:bg-[#fafafa]'
                   }`}
                   onClick={() => {
@@ -3341,10 +3341,10 @@ function App() {
 
   const addMoreCta = (
     <div className="mt-2 flex items-center justify-between py-3">
-      <p className="text-[16px] font-medium leading-6 text-[#333]">Need anything else?</p>
+      <p className="text-[16px] font-normal leading-6 text-[#333]">Need anything else?</p>
       <button
         type="button"
-        className="flex h-10 shrink-0 items-center justify-center border border-[#333] bg-white px-5 py-2 text-[16px] font-medium leading-6 text-[#333]"
+        className="flex h-10 shrink-0 items-center justify-center border border-[#333] bg-white px-5 py-2 text-[16px] font-normal leading-6 text-[#333]"
         onClick={scrollToAddMoreInput}
       >
         Add
@@ -3354,7 +3354,7 @@ function App() {
 
   return (
     <main
-      className="app-shell min-h-screen bg-[#fafafa] font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',_'Gill_Sans',_'Gill_Sans_MT',sans-serif]"
+      className="app-shell min-h-screen bg-[#fafafa] font-normal text-[#333] [font-family:'Gill_Sans_Nova_for_JL',sans-serif]"
       style={{
         paddingBottom:
           appView !== 'build'
@@ -3405,7 +3405,7 @@ function App() {
                 onClick={() => setAppView('trolley')}
               >
                 <TrolleyIconWithBadge count={trolleyUnitCount} />
-                <span className="text-[16px] font-medium tabular-nums">{formatCurrency(trolleyMoneyTotal)}</span>
+                <span className="text-[16px] font-normal tabular-nums">{formatCurrency(trolleyMoneyTotal)}</span>
               </button>
             </div>
           </div>
@@ -3569,7 +3569,7 @@ function App() {
           <>
             <div
               className="mb-6 text-center uppercase text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]"
-              style={{ fontFamily: '"Gill Sans Nova for JL","Gill Sans","Gill Sans MT",Calibri,"Trebuchet MS",sans-serif', fontWeight: 500, fontStyle: 'normal' }}
+              style={{ fontFamily: '"Gill Sans Nova for JL",Calibri,"Trebuchet MS",sans-serif', fontWeight: 400, fontStyle: 'normal' }}
             >
               Shopping Lists
             </div>
@@ -3580,7 +3580,7 @@ function App() {
                   className="flex w-full flex-wrap items-start content-start gap-5"
                   onSubmit={(e) => { e.preventDefault(); createNewList() }}
                 >
-                  <label className="w-full text-[16px] font-medium text-[#333]" htmlFor="new-list-name">
+                  <label className="w-full text-[16px] font-normal text-[#333]" htmlFor="new-list-name">
                     Enter list name
                   </label>
                   <div className="flex w-full flex-col gap-1">
@@ -3640,13 +3640,13 @@ function App() {
                                 cancelEditingListName()
                               }
                             }}
-                            className="min-w-0 flex-1 border-b border-[#333] bg-transparent font-medium text-[#333] outline-none"
+                            className="min-w-0 flex-1 border-b border-[#333] bg-transparent font-normal text-[#333] outline-none"
                             aria-label={`Edit ${list.name}`}
                             autoFocus
                           />
                         ) : (
                           <>
-                            <span className="truncate font-medium">{list.name}</span>
+                            <span className="truncate font-normal">{list.name}</span>
                             <button
                               type="button"
                               aria-label={`Edit ${list.name}`}
@@ -3687,7 +3687,7 @@ function App() {
                     ) : (
                       <div className="px-4 py-4">
                         <button
-                          className="text-[16px] font-medium underline"
+                          className="text-[16px] font-normal underline"
                           onClick={() => openList(list)}
                         >
                           Start building your list
@@ -3697,7 +3697,7 @@ function App() {
                     {previewImages.length > 0 && (
                       <div className="flex justify-end px-4 pb-4">
                         <button
-                          className="text-[16px] font-medium underline"
+                          className="text-[16px] font-normal underline"
                           onClick={() => openList(list)}
                         >
                           View
@@ -3727,7 +3727,7 @@ function App() {
               </button>
               <div
                 className="w-full text-center uppercase text-[20px] tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]"
-                style={{ fontFamily: '"Gill Sans Nova for JL","Gill Sans","Gill Sans MT",Calibri,"Trebuchet MS",sans-serif', fontWeight: 500, fontStyle: 'normal' }}
+                style={{ fontFamily: '"Gill Sans Nova for JL",Calibri,"Trebuchet MS",sans-serif', fontWeight: 400, fontStyle: 'normal' }}
               >
                 {listName || 'LIST NAME'}
               </div>
@@ -3770,10 +3770,10 @@ function App() {
 
             {!addItemPanelExpanded ? (
               <div className="mx-auto mb-6 flex w-full max-w-[768px] items-center justify-center gap-4">
-                <p className="text-[16px] font-medium leading-6 text-[#333]">Need anything else?</p>
+                <p className="text-[16px] font-normal leading-6 text-[#333]">Need anything else?</p>
                 <button
                   type="button"
-                  className="flex h-10 shrink-0 items-center justify-center border border-[#333] bg-white px-5 py-2 text-[16px] font-medium leading-6 text-[#333]"
+                  className="flex h-10 shrink-0 items-center justify-center border border-[#333] bg-white px-5 py-2 text-[16px] font-normal leading-6 text-[#333]"
                   onClick={expandAddItemPanel}
                 >
                   Add
@@ -3790,7 +3790,7 @@ function App() {
               void handleBuildShop()
             }}
           >
-            <div className="mb-2 text-[14px] font-medium tracking-[2.8px] text-[#53565A]">{addPanelTitle}</div>
+            <div className="mb-2 text-[14px] font-normal tracking-[2.8px] text-[#53565A]">{addPanelTitle}</div>
             <label htmlFor="list-input" className="sr-only">
               List input
             </label>
@@ -3934,14 +3934,14 @@ function App() {
           <span className="inline-flex shrink-0 pt-[3px] text-[#53565A] sm:pt-0" aria-hidden="true">
             <IconDisclaimerInfo />
           </span>
-          <p className="max-w-[min(100%,544px)] text-left text-[14px] font-medium leading-5 text-[#333] sm:max-w-none sm:text-center">
+          <p className="max-w-[min(100%,544px)] text-left text-[14px] font-normal leading-5 text-[#333] sm:max-w-none sm:text-center">
             Always check labels for allergens and verify quantities before adding to trolley.
           </p>
         </div>
 
         <div className="mx-auto mt-12 w-full max-w-[768px]">
           <div className="mb-1 flex flex-wrap items-center gap-x-4">
-            <div className="text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Need inspiration?</div>
+            <div className="text-[14px] font-normal uppercase tracking-[2.8px] text-[#53565A]">Need inspiration?</div>
             <CuisinePicker
               value={cuisineSelection}
               onChange={setCuisineSelection}
@@ -3971,7 +3971,7 @@ function App() {
           <div className="mx-auto mt-10 w-full max-w-[1195px] px-0">
             {hasVisibleMeals && (
               <>
-                <h2 className="mb-2 text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Meals</h2>
+                <h2 className="mb-2 text-[14px] font-normal uppercase tracking-[2.8px] text-[#53565A]">Meals</h2>
                 <div className="flex flex-col gap-2">
                   {mealGroups.filter((meal) => !meal.removed).map((meal) => {
                 const mealItems = meal.ingredients.reduce(
@@ -3994,7 +3994,7 @@ function App() {
                         <IconChevronMeal expanded={meal.expanded} />
                       </button>
                       <div className="min-w-0 flex-1 pt-0.5">
-                        <p className="text-[16px] font-medium leading-snug text-[#333]">{meal.title}</p>
+                        <p className="text-[16px] font-normal leading-snug text-[#333]">{meal.title}</p>
                         <div className="mt-1.5 flex flex-wrap items-center text-[16px] font-light leading-6 text-[#53565A]">
                           {metaLead ? <span>{metaLead}</span> : null}
                           {metaLead ? (
@@ -4008,7 +4008,7 @@ function App() {
                               href={methodUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="ml-3 shrink-0 font-medium text-[#53565A] underline decoration-solid underline-offset-[3px]"
+                              className="ml-3 shrink-0 font-normal text-[#53565A] underline decoration-solid underline-offset-[3px]"
                             >
                               view method
                             </a>
@@ -4070,7 +4070,7 @@ function App() {
                                     </svg>
                                   ) : null}
                                 </span>
-                                <span className="min-w-0 flex-1 text-[16px] font-medium leading-6 text-[#333]">
+                                <span className="min-w-0 flex-1 text-[16px] font-normal leading-6 text-[#333]">
                                   Select all ingredients
                                 </span>
                               </button>
@@ -4127,7 +4127,7 @@ function App() {
 
             {hasVisibleEssentials && (
               <section className={hasVisibleMeals ? 'mt-10' : ''}>
-                <h2 className="text-[14px] font-medium uppercase tracking-[2.8px] text-[#53565A]">Your items</h2>
+                <h2 className="text-[14px] font-normal uppercase tracking-[2.8px] text-[#53565A]">Your items</h2>
                 <p className="mb-3 mt-2 text-[16px] font-light leading-6 text-[#53565A]">{essentialsMetaLine}</p>
                 <div className="border border-[#ddd] bg-white">
                   {visibleEssentials.map((item, idx) => (
@@ -4200,13 +4200,13 @@ function App() {
           <div className="mx-auto max-w-[768px] px-4 py-12 text-center">
             <h1
               className="mb-4 uppercase tracking-[4px] text-[#333] sm:text-[28px] sm:tracking-[7px]"
-              style={{ fontFamily: '"Gill Sans Nova for JL","Gill Sans","Gill Sans MT",Calibri,"Trebuchet MS",sans-serif', fontWeight: 500, fontSize: 'clamp(20px,4vw,28px)' }}
+              style={{ fontFamily: '"Gill Sans Nova for JL",Calibri,"Trebuchet MS",sans-serif', fontWeight: 400, fontSize: 'clamp(20px,4vw,28px)' }}
             >
               Favourites
             </h1>
             <p className="text-[16px] leading-6 text-[#53565A]">
               Your saved favourites will appear here. Use the navigation tabs above and choose{' '}
-              <button type="button" className="font-medium underline" onClick={goToIndex}>
+              <button type="button" className="font-normal underline" onClick={goToIndex}>
                 Shopping lists
               </button>{' '}
               to return to your lists.
@@ -4564,10 +4564,10 @@ function App() {
                   ) : (
                     <span className="flex-shrink-0 text-3xl">{swapTarget.item.image}</span>
                   )}
-                  <span className="text-sm font-medium text-[#1a1a1a]">{swapTarget.item.name}</span>
+                  <span className="text-sm font-normal text-[#1a1a1a]">{swapTarget.item.name}</span>
                 </div>
                 <div className="border-t border-[#ddd] p-4 md:border-t-0">
-                  <p className="font-medium text-[#1a1a1a]">{formatCurrency(swapTarget.item.price)}</p>
+                  <p className="font-normal text-[#1a1a1a]">{formatCurrency(swapTarget.item.price)}</p>
                   <p className="text-sm text-[#757575]">{swapTarget.item.unitPrice}</p>
                 </div>
               </div>
@@ -4631,7 +4631,7 @@ function App() {
                         <div className="min-w-0">
                           <span className="text-sm text-[#1a1a1a]">{choice.name}</span>
                           {choice.offers?.trim() ? (
-                            <p className="mt-1 text-[12px] font-medium leading-4 text-[#A6192E]">
+                            <p className="mt-1 text-[12px] font-normal leading-4 text-[#A6192E]">
                               {choice.offers.trim()}
                             </p>
                           ) : null}
@@ -4639,7 +4639,7 @@ function App() {
                       </div>
                       <div className="flex items-center justify-between border-t border-[#ddd] px-4 py-3 md:border-t-0">
                         <div>
-                          <p className="font-medium text-[#1a1a1a]">{formatCurrency(choice.price)}</p>
+                          <p className="font-normal text-[#1a1a1a]">{formatCurrency(choice.price)}</p>
                           <p className="text-sm text-[#757575]">{choice.unitPrice}</p>
                         </div>
                         <button
@@ -4657,7 +4657,7 @@ function App() {
                 <div className="px-4 pb-3 pt-2 text-center">
                   <button
                     type="button"
-                    className="text-[14px] font-medium text-[#53565A] underline decoration-solid underline-offset-[3px]"
+                    className="text-[14px] font-normal text-[#53565A] underline decoration-solid underline-offset-[3px]"
                     onClick={() => setSwapShowAllAlts(true)}
                   >
                     View all items
@@ -4697,7 +4697,7 @@ function App() {
             <IconBin />
             <span>
               Removed{' '}
-              <span className="font-medium">
+              <span className="font-normal">
                 {removedEssentialName.length > 20
                   ? `${removedEssentialName.slice(0, 20)}…`
                   : removedEssentialName}

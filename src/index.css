@@ -1,17 +1,65 @@
 @import "tailwindcss";
 
+/*
+  Waitrose Gill Sans Nova for JL has no "Regular" cut.
+  Figma "Regular" body UI maps to the Medium face.
+  Explicit @font-face stops macOS system Gill Sans from substituting Bold at weight 400.
+*/
+@font-face {
+  font-family: "Gill Sans Nova for JL";
+  src: url("/fonts/GillSansNova-Light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gill Sans Nova for JL";
+  src: url("/fonts/GillSansNova-Medium.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gill Sans Nova for JL";
+  src: url("/fonts/GillSansNova-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gill Sans Nova for JL";
+  src: url("/fonts/GillSansNova-SemiBold.otf") format("opentype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gill Sans Nova for JL";
+  src: url("/fonts/GillSansNova-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 body {
   margin: 0;
-  font-family: "Gill Sans Nova for JL", "Gill Sans", "Gill Sans MT", Calibri, "Trebuchet MS", sans-serif;
-  font-weight: 500;
+  font-family: "Gill Sans Nova for JL", Calibri, "Trebuchet MS", sans-serif;
+  font-weight: 400;
+  font-synthesis: none;
   color: #333333;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
 input,
 textarea {
   font: inherit;
-  font-weight: 500;
+  font-weight: 400;
+  font-synthesis: none;
 }
 
 button:not(:disabled) {
@@ -22,22 +70,25 @@ button:not(:disabled) {
   color: transparent;
 }
 
-.app-shell,
-.app-shell * {
-  font-weight: 500 !important;
+.app-shell {
+  font-family: "Gill Sans Nova for JL", Calibri, "Trebuchet MS", sans-serif;
+  font-weight: 400;
+  font-synthesis: none;
 }
 
 .web-paragraph-heading {
   color: #333333;
-  font-family: "Gill Sans Nova for JL", "Gill Sans", "Gill Sans MT", Calibri, "Trebuchet MS", sans-serif;
+  font-family: "Gill Sans Nova for JL", Calibri, "Trebuchet MS", sans-serif;
   font-size: 16px;
   font-style: normal;
-  font-weight: 500;
+  font-weight: 400;
+  font-synthesis: none;
   line-height: 24px;
 }
 
 /* BUILD A SHOP title should use Gill Sans. */
 .font-waitrose-display {
-  font-family: "Gill Sans Nova for JL", "Gill Sans", "Gill Sans MT", Calibri, "Trebuchet MS", sans-serif;
-  font-weight: 500 !important;
+  font-family: "Gill Sans Nova for JL", Calibri, "Trebuchet MS", sans-serif;
+  font-weight: 400;
+  font-synthesis: none;
 }

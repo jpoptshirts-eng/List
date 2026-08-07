@@ -75,7 +75,7 @@ export function MyTrolleyView({
 
   const summaryBlock = (
     <div className="border border-[#ddd] bg-white p-4">
-      <p className="mb-4 text-[18px] font-medium text-[#333]">Total</p>
+      <p className="mb-4 text-[18px] font-normal text-[#333]">Total</p>
       <div className="flex flex-col gap-2 text-[16px] leading-6">
         <div className="flex justify-between">
           <span>Sub-total</span>
@@ -87,7 +87,7 @@ export function MyTrolleyView({
             <span className="tabular-nums">-{formatCurrency(Math.abs(offerSavings))}</span>
           </div>
         ) : null}
-        <div className="flex justify-between font-medium">
+        <div className="flex justify-between font-normal">
           <span className="flex items-center gap-2">
             Estimated total
             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#53565A] text-[12px] font-normal">
@@ -100,7 +100,7 @@ export function MyTrolleyView({
       <button
         type="button"
         disabled={!canCheckout}
-        className={`mt-4 w-full px-5 py-3 text-[16px] font-medium leading-6 ${
+        className={`mt-4 w-full px-5 py-3 text-[16px] font-normal leading-6 ${
           canCheckout ? 'bg-[#5B8226] text-white' : 'bg-[#eeeeee] text-[#a9a9a9]'
         }`}
       >
@@ -122,18 +122,18 @@ export function MyTrolleyView({
       <div className="mx-auto w-full max-w-[768px] py-10 text-center">
         <h1
           className="mb-2 uppercase tracking-[4px] text-[#333] sm:tracking-[7px]"
-          style={{ fontFamily: '"Gill Sans Nova for JL","Gill Sans","Gill Sans MT",Calibri,"Trebuchet MS",sans-serif', fontWeight: 500, fontSize: 'clamp(20px,4vw,28px)' }}
+          style={{ fontFamily: '"Gill Sans Nova for JL",Calibri,"Trebuchet MS",sans-serif', fontWeight: 400, fontSize: 'clamp(20px,4vw,28px)' }}
         >
           My trolley
         </h1>
         <div className="mx-auto mb-8 h-px w-16 bg-[#333]" aria-hidden />
         <p className="mb-6 text-[16px] leading-6 text-[#53565A]">Your trolley is empty.</p>
-        <button type="button" className="text-[16px] font-medium underline" onClick={onNavigateShoppingLists}>
+        <button type="button" className="text-[16px] font-normal underline" onClick={onNavigateShoppingLists}>
           Continue shopping lists
         </button>
         <p className="mt-6 text-[14px] text-[#53565A]">
           Browse{' '}
-          <button type="button" className="font-medium underline" onClick={onNavigateFavourites}>
+          <button type="button" className="font-normal underline" onClick={onNavigateFavourites}>
             Favourites
           </button>
         </p>
@@ -145,7 +145,7 @@ export function MyTrolleyView({
     <div className="mx-auto w-full max-w-[1260px] pb-24 lg:pb-8">
       <h1
         className="mb-2 text-center uppercase tracking-[4px] text-[#333] sm:tracking-[7px]"
-        style={{ fontFamily: '"Gill Sans Nova for JL","Gill Sans","Gill Sans MT",Calibri,"Trebuchet MS",sans-serif', fontWeight: 500, fontSize: 'clamp(20px,4vw,28px)' }}
+        style={{ fontFamily: '"Gill Sans Nova for JL",Calibri,"Trebuchet MS",sans-serif', fontWeight: 400, fontSize: 'clamp(20px,4vw,28px)' }}
       >
         My trolley
       </h1>
@@ -155,14 +155,14 @@ export function MyTrolleyView({
       <div className="mb-6 lg:hidden">{summaryBlock}</div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-[16px]">
-        <span className="font-medium text-[#333]">
+        <span className="font-normal text-[#333]">
           {unitCount} item{unitCount === 1 ? '' : 's'}
         </span>
         <div className="flex flex-wrap items-center gap-4">
-          <button type="button" className="font-medium underline" onClick={onNavigateFavourites}>
+          <button type="button" className="font-normal underline" onClick={onNavigateFavourites}>
             Favourites
           </button>
-          <button type="button" className="font-medium underline" onClick={onEmptyTrolley}>
+          <button type="button" className="font-normal underline" onClick={onEmptyTrolley}>
             Empty trolley
           </button>
         </div>
@@ -226,7 +226,7 @@ export function MyTrolleyView({
 
       <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-10 lg:items-start">
         <div>
-          <div className="bg-[#eeeeee] px-4 py-2 text-[14px] font-medium uppercase tracking-[1px] text-[#333]">Groceries</div>
+          <div className="bg-[#eeeeee] px-4 py-2 text-[14px] font-normal uppercase tracking-[1px] text-[#333]">Groceries</div>
           <ul className="divide-y divide-[#ddd] border border-t-0 border-[#ddd] bg-white">
             {filtered.map((line) => (
               <li key={line.id} className="p-4">
@@ -251,7 +251,7 @@ export function MyTrolleyView({
                         onDelta={(d) => onQuantityDelta(line.id, d)}
                       />
                       <div className="text-[#333]">
-                        <p className="text-[16px] font-medium leading-6 tabular-nums">{formatCurrency(line.price * line.qty)}</p>
+                        <p className="text-[16px] font-normal leading-6 tabular-nums">{formatCurrency(line.price * line.qty)}</p>
                         <p className="text-[16px] font-light leading-6 text-[#53565A]">{line.unitPrice}</p>
                       </div>
                     </div>

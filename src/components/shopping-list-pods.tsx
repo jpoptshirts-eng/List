@@ -198,7 +198,7 @@ export function RecipeProductPod({
 
   const priceBlock = (
     <div className="shrink-0 text-right text-[#333] md:text-left">
-      <p className="text-[16px] font-medium leading-6">{price}</p>
+      <p className="text-[16px] font-normal leading-6">{price}</p>
       <p className="font-light text-[16px] leading-6 text-[#53565A]">{unitPrice}</p>
     </div>
   )
@@ -272,7 +272,7 @@ export function EssentialProductPod({ name, image, price, unitPrice, qty, select
 
   const priceBlock = (
     <div className="shrink-0 text-[#333]">
-      <p className="text-[16px] font-medium leading-6">{price}</p>
+      <p className="text-[16px] font-normal leading-6">{price}</p>
       <p className="font-light text-[16px] leading-6 text-[#53565A]">{unitPrice}</p>
     </div>
   )
