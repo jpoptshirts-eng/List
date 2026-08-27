@@ -6,6 +6,10 @@ type Props = {
   suggestions: ProductSuggestion[]
   highlightedIndex: number
   open: boolean
+  /** When true, the View All control is hidden (results already expanded). */
+  viewAllExpanded?: boolean
+  /** Mobile: dynamic max height in px from visualViewport. Desktop uses CSS fallback. */
+  maxHeightPx?: number | null
   onHighlight: (index: number) => void
   onSelect: (suggestion: ProductSuggestion) => void
   onViewAll?: (query: string) => void
@@ -34,6 +38,8 @@ export function ProductAutocomplete({
   suggestions,
   highlightedIndex,
   open,
+  viewAllExpanded = false,
+  maxHeightPx = null,
   onHighlight,
   onSelect,
   onViewAll,
@@ -46,11 +52,13 @@ export function ProductAutocomplete({
   useEffect(() => {
     if (!open || highlightedIndex < 0) return
     const el = panelRef.current?.querySelector(`[data-suggestion-index="${highlightedIndex}"]`)
-    // Scroll the page (not an inner panel) so keyboard users can see the active option.
-    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    el?.scrollIntoView({ block: 'nearest' })
   }, [highlightedIndex, open])
 
   if (!open || suggestions.length === 0) return null
+
+  const showViewAll =
+    Boolean(onViewAll) && !viewAllExpanded && query.trim().length >= 2
 
   return (
     <div
@@ -58,11 +66,21 @@ export function ProductAutocomplete({
       id={listId}
       role="listbox"
       aria-label="Product suggestions"
-      className="relative w-full border border-t-0 border-[#a9a9a9] bg-white"
       data-product-autocomplete-panel
+      className="absolute left-0 right-0 top-full z-30 overflow-y-auto overscroll-contain border border-t-0 border-[#a9a9a9] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)] max-md:touch-pan-y md:max-h-[min(320px,50vh)]"
+      style={
+        maxHeightPx != null
+          ? { maxHeight: `${maxHeightPx}px`, WebkitOverflowScrolling: 'touch' }
+          : { WebkitOverflowScrolling: 'touch' }
+      }
+      onTouchMove={(e) => {
+        // Keep vertical scrolling inside the panel; stop the page from dragging.
+        e.stopPropagation()
+      }}
     >
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {suggestions.length} suggestion{suggestions.length === 1 ? '' : 's'} available
+        {viewAllExpanded ? ', showing all results' : ''}
       </p>
       {suggestions.map((suggestion, index) => {
         const selected = index === highlightedIndex
@@ -73,7 +91,7 @@ export function ProductAutocomplete({
             id={`${listId}-option-${index}`}
             role="option"
             aria-selected={selected}
-            className={`flex items-center gap-3 border-b border-[#eee] px-3 py-3 last:border-b-0 ${selected ? 'bg-[#f5f5f5]' : 'bg-white'}`}
+            className={`flex items-center gap-3 border-b border-[#eee] px-3 py-3 ${selected ? 'bg-[#f5f5f5]' : 'bg-white'}`}
             onMouseEnter={() => onHighlight(index)}
           >
             <SuggestionThumb image={suggestion.image} />
@@ -97,14 +115,14 @@ export function ProductAutocomplete({
           </div>
         )
       })}
-      {onViewAll && query.trim().length >= 2 ? (
+      {showViewAll ? (
         <button
           type="button"
           role="option"
           aria-selected={false}
           className="w-full border-t border-[#eee] px-3 py-3 text-left text-[16px] leading-6 text-[#333] underline decoration-solid underline-offset-[3px] hover:bg-[#fafafa]"
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => onViewAll(query)}
+          onClick={() => onViewAll?.(query)}
         >
           View all results for &lsquo;{query.trim()}&rsquo;
         </button>

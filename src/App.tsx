@@ -2002,6 +2002,7 @@ function App() {
   const [autocompleteOpen, setAutocompleteOpen] = useState(false)
   const [autocompleteHighlight, setAutocompleteHighlight] = useState(-1)
   const [viewAllQuery, setViewAllQuery] = useState<string | null>(null)
+  const [autocompletePanelMaxHeight, setAutocompletePanelMaxHeight] = useState<number | null>(null)
   const [cuisineSelection, setCuisineSelection] = useState<'All' | Cuisine>('All')
   const [cuisinePickerOpen, setCuisinePickerOpen] = useState(false)
   const [removeConfirmTarget, setRemoveConfirmTarget] = useState<RemoveConfirmTarget | null>(null)
@@ -3014,7 +3015,14 @@ function App() {
     })
     setAutocompleteOpen(canShow && activeLine.length >= 1)
     setAutocompleteHighlight(-1)
-    if (!canShow) setViewAllQuery(null)
+    if (!canShow) {
+      setViewAllQuery(null)
+    } else if (
+      viewAllQuery &&
+      activeLine.trim().toLowerCase() !== viewAllQuery.trim().toLowerCase()
+    ) {
+      setViewAllQuery(null)
+    }
   }
 
   function handleListInputPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
@@ -3057,6 +3065,45 @@ function App() {
   function expandAddItemPanel() {
     setAddItemPanelExpanded(true)
     window.setTimeout(() => listInputRef.current?.focus(), 0)
+  }
+
+  function scrollCreateListComposerIntoView() {
+    if (typeof window === 'undefined') return
+    if (!window.matchMedia('(max-width: 767px)').matches) return
+
+    const run = () => {
+      const section = document.getElementById('create-list-input')
+      if (!section) return
+      const stickyHeader = document.querySelector('[data-sticky-site-header]')
+      const headerOffset =
+        stickyHeader instanceof HTMLElement ? stickyHeader.getBoundingClientRect().height : 0
+      const gap = 12
+      const top = section.getBoundingClientRect().top + window.scrollY - headerOffset - gap
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    }
+
+    // Run now and again after iOS keyboard / visualViewport settles.
+    window.requestAnimationFrame(run)
+    window.setTimeout(run, 320)
+  }
+
+  function updateAutocompletePanelMaxHeight() {
+    if (typeof window === 'undefined') {
+      setAutocompletePanelMaxHeight(null)
+      return
+    }
+    if (!window.matchMedia('(max-width: 767px)').matches) {
+      setAutocompletePanelMaxHeight(null)
+      return
+    }
+    const input = listInputRef.current
+    if (!input) return
+    const vv = window.visualViewport
+    const viewportBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
+    const inputBottom = input.getBoundingClientRect().bottom
+    const available = Math.floor(viewportBottom - inputBottom - 10)
+    // Keep a usable scroll area above the keyboard without covering the field.
+    setAutocompletePanelMaxHeight(Math.max(140, available))
   }
 
   function scrollToAddMoreInput() {
@@ -3299,10 +3346,14 @@ function App() {
   })
 
   const autocompleteQuery = getActiveInputLine(inputValue)
+  const viewAllExpanded = Boolean(
+    viewAllQuery &&
+      viewAllQuery.trim().toLowerCase() === autocompleteQuery.trim().toLowerCase(),
+  )
   const autocompleteSuggestions = searchProductSuggestions(
-    viewAllQuery ?? autocompleteQuery,
+    viewAllExpanded ? viewAllQuery! : autocompleteQuery,
     autocompleteCatalog,
-    viewAllQuery ? 12 : 6,
+    viewAllExpanded ? 80 : 6,
   )
   const showAutocompletePanel =
     autocompleteOpen &&
@@ -3327,21 +3378,25 @@ function App() {
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 72), maxHeight)}px`
   }, [appView, inputValue, helperCopy, showAutocompletePanel, inputMode])
 
-  // When suggestions open on mobile, keep the composer near the top so the
-  // first results are visible above the keyboard.
   useEffect(() => {
-    if (!showAutocompletePanel) return
-    if (typeof window === 'undefined') return
-    if (!window.matchMedia('(max-width: 767px)').matches) return
-    if (document.activeElement !== listInputRef.current) return
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById('create-list-input')?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [showAutocompletePanel, autocompleteSuggestions.length])
+    if (!showAutocompletePanel) {
+      setAutocompletePanelMaxHeight(null)
+      return
+    }
+    updateAutocompletePanelMaxHeight()
+    const vv = window.visualViewport
+    const onResize = () => updateAutocompletePanelMaxHeight()
+    vv?.addEventListener('resize', onResize)
+    vv?.addEventListener('scroll', onResize)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onResize, true)
+    return () => {
+      vv?.removeEventListener('resize', onResize)
+      vv?.removeEventListener('scroll', onResize)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onResize, true)
+    }
+  }, [showAutocompletePanel, inputValue, viewAllExpanded])
 
   const allEssentialsVisible = !hasVisibleEssentials || hiddenEssentialsCount === 0 || showMoreEssentials
 
@@ -3800,7 +3855,7 @@ function App() {
               <>
         <div
           id="create-list-input"
-          className="mx-auto w-full max-w-[768px] scroll-mt-[calc(env(safe-area-inset-top)+88px)] border border-[#ddd] bg-white p-3 sm:scroll-mt-0 sm:p-4"
+          className="mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4"
         >
           <form
             className="block"
@@ -3814,7 +3869,7 @@ function App() {
             <label htmlFor="list-input" className="sr-only">
               List input
             </label>
-            <div>
+            <div className="relative">
               <textarea
                 ref={listInputRef}
                 id="list-input"
@@ -3853,16 +3908,8 @@ function App() {
                   ) {
                     setAutocompleteOpen(true)
                   }
-                  // Mobile: bring the composer near the top so suggestions sit
-                  // in the visible area above the keyboard.
-                  if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
-                    window.requestAnimationFrame(() => {
-                      document.getElementById('create-list-input')?.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start',
-                      })
-                    })
-                  }
+                  scrollCreateListComposerIntoView()
+                  window.setTimeout(() => updateAutocompletePanelMaxHeight(), 350)
                 }}
                 aria-invalid={listInputError ? true : undefined}
                 aria-describedby={
@@ -3875,11 +3922,14 @@ function App() {
                 suggestions={autocompleteSuggestions}
                 highlightedIndex={autocompleteHighlight}
                 open={showAutocompletePanel}
+                viewAllExpanded={viewAllExpanded}
+                maxHeightPx={autocompletePanelMaxHeight}
                 onHighlight={setAutocompleteHighlight}
                 onSelect={addProductFromSuggestion}
                 onViewAll={(q) => {
-                  setViewAllQuery(q)
+                  setViewAllQuery(q.trim())
                   setAutocompleteHighlight(0)
+                  window.setTimeout(() => updateAutocompletePanelMaxHeight(), 0)
                 }}
                 listId={autocompleteListId}
               />
