@@ -51,8 +51,16 @@ export function ProductAutocomplete({
 
   useEffect(() => {
     if (!open || highlightedIndex < 0) return
-    const el = panelRef.current?.querySelector(`[data-suggestion-index="${highlightedIndex}"]`)
-    el?.scrollIntoView({ block: 'nearest' })
+    const panel = panelRef.current
+    const el = panel?.querySelector<HTMLElement>(`[data-suggestion-index="${highlightedIndex}"]`)
+    if (!panel || !el) return
+    const panelRect = panel.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    if (elRect.bottom > panelRect.bottom) {
+      panel.scrollTop += elRect.bottom - panelRect.bottom
+    } else if (elRect.top < panelRect.top) {
+      panel.scrollTop -= panelRect.top - elRect.top
+    }
   }, [highlightedIndex, open])
 
   if (!open || suggestions.length === 0) return null
@@ -67,14 +75,16 @@ export function ProductAutocomplete({
       role="listbox"
       aria-label="Product suggestions"
       data-product-autocomplete-panel
-      className="absolute left-0 right-0 top-full z-30 overflow-y-auto overscroll-contain border border-t-0 border-[#a9a9a9] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)] max-md:touch-pan-y md:max-h-[min(320px,50vh)]"
+      className="absolute left-0 right-0 top-full z-40 overflow-y-auto overscroll-contain border border-t-0 border-[#a9a9a9] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)] max-md:touch-pan-y md:max-h-[min(320px,50vh)]"
       style={
         maxHeightPx != null
           ? { maxHeight: `${maxHeightPx}px`, WebkitOverflowScrolling: 'touch' }
           : { WebkitOverflowScrolling: 'touch' }
       }
       onTouchMove={(e) => {
-        // Keep vertical scrolling inside the panel; stop the page from dragging.
+        e.stopPropagation()
+      }}
+      onWheel={(e) => {
         e.stopPropagation()
       }}
     >
@@ -127,6 +137,8 @@ export function ProductAutocomplete({
           View all results for &lsquo;{query.trim()}&rsquo;
         </button>
       ) : null}
+      {/* Keep the final row fully clear of the sticky trolley footer. */}
+      <div className="h-6 shrink-0 max-md:h-8" aria-hidden="true" />
     </div>
   )
 }
