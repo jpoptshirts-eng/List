@@ -2311,19 +2311,9 @@ function App() {
       })
   }, [appView, autocompleteCatalog.length])
 
-  useEffect(() => {
-    if (!autocompleteOpen) return
-    const onPointerDown = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (listInputRef.current?.contains(target)) return
-      if (document.querySelector('[data-product-autocomplete-panel]')?.contains(target)) return
-      setAutocompleteOpen(false)
-      setAutocompleteHighlight(-1)
-    }
-    document.addEventListener('mousedown', onPointerDown)
-    return () => document.removeEventListener('mousedown', onPointerDown)
-  }, [autocompleteOpen])
-
+  // Keep autocomplete open after keyboard dismiss / blur so users can still
+  // scroll the page and pick a suggestion. Close only via explicit actions
+  // (select, clear, Escape, mode change) — not outside taps.
   useEffect(() => {
     if (!generated) return
     // Read the live textarea value to avoid a one-frame state lag
@@ -3156,12 +3146,12 @@ function App() {
 
   // Per-list derived values are computed inline when rendering each list card
 
-  function createNewList() {
-    const name = newListNameInput.trim()
+  function createNewList(rawName?: string) {
+    const name = (rawName ?? newListNameInput).trim()
     if (!name) return
     const newList: SavedList = {
       id: crypto.randomUUID(),
-      name,
+      name: name.slice(0, 20),
       mealGroups: [],
       essentials: [],
       generated: false,
@@ -3169,7 +3159,7 @@ function App() {
     }
     setSavedLists((prev) => [...prev, newList])
     setNewListNameInput('')
-    // Stay on index — user clicks the card to open it
+    openList(newList)
   }
 
   function openList(list: SavedList) {
@@ -3336,6 +3326,22 @@ function App() {
     const maxHeight = 144
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 72), maxHeight)}px`
   }, [appView, inputValue, helperCopy, showAutocompletePanel, inputMode])
+
+  // When suggestions open on mobile, keep the composer near the top so the
+  // first results are visible above the keyboard.
+  useEffect(() => {
+    if (!showAutocompletePanel) return
+    if (typeof window === 'undefined') return
+    if (!window.matchMedia('(max-width: 767px)').matches) return
+    if (document.activeElement !== listInputRef.current) return
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('create-list-input')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [showAutocompletePanel, autocompleteSuggestions.length])
 
   const allEssentialsVisible = !hasVisibleEssentials || hiddenEssentialsCount === 0 || showMoreEssentials
 
@@ -3575,10 +3581,15 @@ function App() {
             </div>
             <div className="mx-auto flex w-full max-w-[768px] flex-wrap gap-6 items-start">
               {/* Create a list tile (Figma List card) */}
-              <div className="flex w-full max-w-[382.333px] shrink-0 items-start border border-[#ddd] bg-white p-6">
+              <div className="relative z-0 flex w-full max-w-[382.333px] shrink-0 items-start border border-[#ddd] bg-white p-6">
                 <form
-                  className="flex w-full flex-wrap items-start content-start gap-5"
-                  onSubmit={(e) => { e.preventDefault(); createNewList() }}
+                  className="flex w-full flex-col items-stretch gap-5"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    const form = e.currentTarget
+                    const fromDom = new FormData(form).get('listName')
+                    createNewList(typeof fromDom === 'string' ? fromDom : undefined)
+                  }}
                 >
                   <label className="w-full text-[16px] font-normal text-[#333]" htmlFor="new-list-name">
                     Enter list name
@@ -3586,10 +3597,12 @@ function App() {
                   <div className="flex w-full flex-col gap-1">
                     <input
                       id="new-list-name"
+                      name="listName"
                       type="text"
                       maxLength={20}
                       value={newListNameInput}
                       onChange={(e) => setNewListNameInput(e.target.value)}
+                      enterKeyHint="go"
                       className="w-full border-b border-[#a9a9a9] bg-transparent pb-3 text-[16px] outline-none placeholder:text-[#a9a9a9] focus:border-[#154734]"
                       placeholder="eg weekly shop or Birthday lunch"
                       autoComplete="off"
@@ -3599,7 +3612,11 @@ function App() {
                   <button
                     type="submit"
                     disabled={!newListNameInput.trim()}
-                    className="w-full bg-[#53565A] px-5 py-2 text-[16px] text-white disabled:bg-[#eeeeee] disabled:text-[#a9a9a9]"
+                    // iOS: first tap on a submit control while an input is focused often only
+                    // blurs/closes the keyboard; preventing mousedown default keeps focus
+                    // stable so the following click still submits the form.
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="relative z-10 min-h-[44px] w-full touch-manipulation bg-[#53565A] px-5 py-2 text-[16px] text-white disabled:bg-[#eeeeee] disabled:text-[#a9a9a9]"
                   >
                     Create list
                   </button>
@@ -3749,7 +3766,7 @@ function App() {
                     </svg>
                   </span>
                   {/* Message */}
-                  <p className="flex-1 text-[16px] leading-6 text-[#333]">Your list will be saved when you click the ‘Add to List’ button.</p>
+                  <p className="flex-1 text-[16px] leading-6 text-[#333]">Your list will be saved when you click the ‘Build shop with list’ button.</p>
                   {/* Dismiss */}
                   <button
                     type="button"
@@ -3781,7 +3798,10 @@ function App() {
               </div>
             ) : (
               <>
-        <div id="create-list-input" className="mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4">
+        <div
+          id="create-list-input"
+          className="mx-auto w-full max-w-[768px] scroll-mt-[calc(env(safe-area-inset-top)+88px)] border border-[#ddd] bg-white p-3 sm:scroll-mt-0 sm:p-4"
+        >
           <form
             className="block"
             onSubmit={(e) => {
@@ -3794,7 +3814,7 @@ function App() {
             <label htmlFor="list-input" className="sr-only">
               List input
             </label>
-            <div className="relative">
+            <div>
               <textarea
                 ref={listInputRef}
                 id="list-input"
@@ -3832,6 +3852,16 @@ function App() {
                     activeLine.length >= 1
                   ) {
                     setAutocompleteOpen(true)
+                  }
+                  // Mobile: bring the composer near the top so suggestions sit
+                  // in the visible area above the keyboard.
+                  if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+                    window.requestAnimationFrame(() => {
+                      document.getElementById('create-list-input')?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      })
+                    })
                   }
                 }}
                 aria-invalid={listInputError ? true : undefined}
@@ -3889,7 +3919,7 @@ function App() {
                   ref={preferencesButtonRef}
                   type="button"
                   className="flex h-[28px] shrink-0 items-center gap-2 border border-solid border-[#333] bg-white py-0.5 pl-2 pr-[7px] text-[16px] leading-6 text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
-                  aria-label={`List preferences, ${activeBuildPreferencesCount} selected`}
+                  aria-label={`Item filters, ${activeBuildPreferencesCount} selected`}
                   aria-expanded={showPreferences}
                   aria-haspopup="dialog"
                   onClick={openBuildPreferences}
@@ -3898,7 +3928,7 @@ function App() {
                     <IconPreferences />
                   </span>
                   <span className="whitespace-nowrap">
-                    List preferences ({activeBuildPreferencesCount})
+                    Item filters ({activeBuildPreferencesCount})
                   </span>
                 </button>
               </div>
@@ -3915,7 +3945,7 @@ function App() {
                   ? 'Building your draft shop…'
                   : imageProcessing
                     ? 'Analysing your list…'
-                    : 'Add to List'}
+                    : 'Build shop with list'}
               </button>
             </div>
           </form>
@@ -4329,7 +4359,7 @@ function App() {
                   <button
                     type="button"
                     data-preferences-close
-                    aria-label="Close list preferences"
+                    aria-label="Close item filters"
                     className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center text-[#333] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#154734]"
                     onClick={dismissBuildPreferences}
                   >

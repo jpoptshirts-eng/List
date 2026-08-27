@@ -46,7 +46,8 @@ export function ProductAutocomplete({
   useEffect(() => {
     if (!open || highlightedIndex < 0) return
     const el = panelRef.current?.querySelector(`[data-suggestion-index="${highlightedIndex}"]`)
-    el?.scrollIntoView({ block: 'nearest' })
+    // Scroll the page (not an inner panel) so keyboard users can see the active option.
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [highlightedIndex, open])
 
   if (!open || suggestions.length === 0) return null
@@ -57,7 +58,7 @@ export function ProductAutocomplete({
       id={listId}
       role="listbox"
       aria-label="Product suggestions"
-      className="absolute left-0 right-0 top-full z-20 max-h-[min(320px,50vh)] overflow-y-auto border border-t-0 border-[#a9a9a9] bg-white"
+      className="relative w-full border border-t-0 border-[#a9a9a9] bg-white"
       data-product-autocomplete-panel
     >
       <p className="sr-only" aria-live="polite" aria-atomic="true">
