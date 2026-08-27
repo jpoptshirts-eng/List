@@ -75,18 +75,12 @@ export function ProductAutocomplete({
       role="listbox"
       aria-label="Product suggestions"
       data-product-autocomplete-panel
-      className="absolute left-0 right-0 top-full z-40 overflow-y-auto overscroll-contain border border-t-0 border-[#a9a9a9] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)] max-md:touch-pan-y md:max-h-[min(320px,50vh)]"
+      className="absolute left-0 right-0 top-full z-40 overflow-y-auto border border-t-0 border-[#a9a9a9] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.12)] max-md:touch-pan-y md:max-h-[min(320px,50vh)]"
       style={
         maxHeightPx != null
           ? { maxHeight: `${maxHeightPx}px`, WebkitOverflowScrolling: 'touch' }
           : { WebkitOverflowScrolling: 'touch' }
       }
-      onTouchMove={(e) => {
-        e.stopPropagation()
-      }}
-      onWheel={(e) => {
-        e.stopPropagation()
-      }}
     >
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {suggestions.length} suggestion{suggestions.length === 1 ? '' : 's'} available

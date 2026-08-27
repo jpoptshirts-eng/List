@@ -2003,6 +2003,10 @@ function App() {
   const [autocompleteHighlight, setAutocompleteHighlight] = useState(-1)
   const [viewAllQuery, setViewAllQuery] = useState<string | null>(null)
   const [autocompletePanelMaxHeight, setAutocompletePanelMaxHeight] = useState<number | null>(null)
+  const composerKeyboardScrollActiveRef = useRef(false)
+  const composerKeyboardScrollCleanupRef = useRef<(() => void) | null>(null)
+  /** Keep temporary scroll room after Done so the page does not jump back when the spacer is removed. */
+  const composerScrollRoomPinnedRef = useRef(false)
   const [cuisineSelection, setCuisineSelection] = useState<'All' | Cuisine>('All')
   const [cuisinePickerOpen, setCuisinePickerOpen] = useState(false)
   const [removeConfirmTarget, setRemoveConfirmTarget] = useState<RemoveConfirmTarget | null>(null)
@@ -3071,6 +3075,72 @@ function App() {
     return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   }
 
+  /** Scroll the page so Create Your List sits under the sticky header (blue alert leaves view). */
+  function getCreateListComposerScrollTop(): number | null {
+    const section = document.getElementById('create-list-input')
+    if (!section) return null
+    const stickyHeader = document.querySelector('[data-sticky-site-header]')
+    const headerOffset =
+      stickyHeader instanceof HTMLElement ? stickyHeader.getBoundingClientRect().height : 0
+    return Math.max(0, section.getBoundingClientRect().top + window.scrollY - headerOffset - 8)
+  }
+
+  function scrollCreateListComposerUnderHeader(behavior: ScrollBehavior = 'smooth') {
+    if (!isMobileAutocompleteViewport()) return
+    const top = getCreateListComposerScrollTop()
+    if (top == null) return
+    window.scrollTo({ top, behavior })
+  }
+
+  function ensureComposerScrollRoom() {
+    if (!isMobileAutocompleteViewport()) return
+    if (document.getElementById('composer-scroll-room')) return
+    const section = document.getElementById('create-list-input')
+    if (!section?.parentElement) return
+    const el = document.createElement('div')
+    el.id = 'composer-scroll-room'
+    el.setAttribute('aria-hidden', 'true')
+    el.style.cssText = 'pointer-events:none;width:100%;height:min(50vh,480px)'
+    section.insertAdjacentElement('afterend', el)
+  }
+
+  function clearComposerScrollRoom() {
+    document.getElementById('composer-scroll-room')?.remove()
+    composerScrollRoomPinnedRef.current = false
+  }
+
+  /**
+   * After focus, wait for iOS keyboard / visualViewport resize, then scroll the page
+   * (not a detached input). Cancelled on blur so Done does not re-scroll.
+   */
+  function scheduleScrollComposerForKeyboard() {
+    if (!isMobileAutocompleteViewport()) return
+    composerKeyboardScrollCleanupRef.current?.()
+    composerKeyboardScrollActiveRef.current = true
+    ensureComposerScrollRoom()
+    composerScrollRoomPinnedRef.current = true
+
+    const run = (behavior: ScrollBehavior) => {
+      if (!composerKeyboardScrollActiveRef.current) return
+      if (document.activeElement !== listInputRef.current) return
+      ensureComposerScrollRoom()
+      scrollCreateListComposerUnderHeader(behavior)
+      updateAutocompletePanelMaxHeight()
+    }
+
+    window.requestAnimationFrame(() => run('smooth'))
+    const timeouts = [120, 350, 550].map((ms) => window.setTimeout(() => run('auto'), ms))
+
+    const vv = window.visualViewport
+    const onVvResize = () => run('auto')
+    vv?.addEventListener('resize', onVvResize)
+
+    composerKeyboardScrollCleanupRef.current = () => {
+      timeouts.forEach((id) => window.clearTimeout(id))
+      vv?.removeEventListener('resize', onVvResize)
+    }
+  }
+
   /** Cap the suggestions panel above the sticky trolley footer and/or keyboard. */
   function updateAutocompletePanelMaxHeight() {
     if (!isMobileAutocompleteViewport()) {
@@ -3365,12 +3435,14 @@ function App() {
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 72), maxHeight)}px`
   }, [appView, inputValue, helperCopy, showAutocompletePanel, inputMode])
 
-  // Panel height only — do not reposition Create Your List; leave page scroll to the browser/keyboard.
+  // Panel height while autocomplete is open. Scroll room stays pinned after Done so the page does not jump.
   useEffect(() => {
     if (!showAutocompletePanel) {
       setAutocompletePanelMaxHeight(null)
       return
     }
+    ensureComposerScrollRoom()
+    composerScrollRoomPinnedRef.current = true
     updateAutocompletePanelMaxHeight()
     const onViewportOrScroll = () => updateAutocompletePanelMaxHeight()
     const vv = window.visualViewport
@@ -3385,6 +3457,13 @@ function App() {
       window.removeEventListener('scroll', onViewportOrScroll)
     }
   }, [showAutocompletePanel, showBuildFooter, buildFooterHeight, inputValue, viewAllExpanded])
+
+  // Drop temporary scroll room when leaving the build composer — not on keyboard Done.
+  useEffect(() => {
+    if (appView !== 'build' || !addItemPanelExpanded) {
+      clearComposerScrollRoom()
+    }
+  }, [appView, addItemPanelExpanded])
 
   const allEssentialsVisible = !hasVisibleEssentials || hiddenEssentialsCount === 0 || showMoreEssentials
 
@@ -3896,8 +3975,13 @@ function App() {
                   ) {
                     setAutocompleteOpen(true)
                   }
-                  // Recalc panel height after the keyboard/visualViewport settles; do not reposition the component.
-                  window.setTimeout(() => updateAutocompletePanelMaxHeight(), 350)
+                  scheduleScrollComposerForKeyboard()
+                }}
+                onBlur={() => {
+                  // Stop keyboard-open scroll corrections; do not restore prior page scroll or clear scroll room.
+                  composerKeyboardScrollActiveRef.current = false
+                  composerKeyboardScrollCleanupRef.current?.()
+                  composerKeyboardScrollCleanupRef.current = null
                 }}
                 aria-invalid={listInputError ? true : undefined}
                 aria-describedby={
