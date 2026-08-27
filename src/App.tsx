@@ -2003,13 +2003,6 @@ function App() {
   const [autocompleteHighlight, setAutocompleteHighlight] = useState(-1)
   const [viewAllQuery, setViewAllQuery] = useState<string | null>(null)
   const [autocompletePanelMaxHeight, setAutocompletePanelMaxHeight] = useState<number | null>(null)
-  const [listInputFocused, setListInputFocused] = useState(false)
-  /** Mobile elevated Create Your List: fixed under sticky header (not keyboard-driven). */
-  const [elevatedComposerLayout, setElevatedComposerLayout] = useState<{
-    top: number
-    placeholderHeight: number
-  } | null>(null)
-  const elevatedPageScrollYRef = useRef(0)
   const [cuisineSelection, setCuisineSelection] = useState<'All' | Cuisine>('All')
   const [cuisinePickerOpen, setCuisinePickerOpen] = useState(false)
   const [removeConfirmTarget, setRemoveConfirmTarget] = useState<RemoveConfirmTarget | null>(null)
@@ -3078,11 +3071,7 @@ function App() {
     return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   }
 
-  function getStickySiteHeaderHeight() {
-    const stickyHeader = document.querySelector('[data-sticky-site-header]')
-    return stickyHeader instanceof HTMLElement ? stickyHeader.getBoundingClientRect().height : 0
-  }
-
+  /** Cap the suggestions panel above the sticky trolley footer and/or keyboard. */
   function updateAutocompletePanelMaxHeight() {
     if (!isMobileAutocompleteViewport()) {
       setAutocompletePanelMaxHeight(null)
@@ -3098,11 +3087,9 @@ function App() {
       footerEl && showBuildFooter
         ? footerEl.getBoundingClientRect().top
         : window.innerHeight
-    // Prefer the nearer of the sticky footer and the visual viewport (keyboard).
     const vvBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
     const usableBottom = Math.min(footerTop, vvBottom) - 12
     const available = Math.floor(usableBottom - inputBottom)
-    // Never force a taller panel than the space above the footer/keyboard.
     setAutocompletePanelMaxHeight(Math.max(0, available))
   }
 
@@ -3378,85 +3365,26 @@ function App() {
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 72), maxHeight)}px`
   }, [appView, inputValue, helperCopy, showAutocompletePanel, inputMode])
 
-  // Elevated Create Your List state is driven by focus/autocomplete — not keyboard visibility.
-  const mobileComposerElevated =
-    listInputFocused || showAutocompletePanel || (autocompleteOpen && inputMode === 'single-item-search')
-
-  useLayoutEffect(() => {
-    if (!isMobileAutocompleteViewport() || !mobileComposerElevated) {
-      setElevatedComposerLayout(null)
-      return
-    }
-    const section = document.getElementById('create-list-input')
-    if (!section) return
-    const top = getStickySiteHeaderHeight()
-    setElevatedComposerLayout((prev) => {
-      const placeholderHeight = prev?.placeholderHeight ?? section.getBoundingClientRect().height
-      if (prev && prev.top === top && prev.placeholderHeight === placeholderHeight) return prev
-      return { top, placeholderHeight }
-    })
-  }, [mobileComposerElevated, listInputFocused, showAutocompletePanel])
-
+  // Panel height only — do not reposition Create Your List; leave page scroll to the browser/keyboard.
   useEffect(() => {
-    if (!isMobileAutocompleteViewport()) {
+    if (!showAutocompletePanel) {
       setAutocompletePanelMaxHeight(null)
       return
     }
-    if (!mobileComposerElevated) {
-      setAutocompletePanelMaxHeight(null)
-      return
-    }
-
-    // Freeze the underlying page so only the autocomplete panel scrolls.
-    const body = document.body
-    elevatedPageScrollYRef.current = window.scrollY
-    const prevPosition = body.style.position
-    const prevTop = body.style.top
-    const prevWidth = body.style.width
-    const prevOverflow = body.style.overflow
-    body.style.position = 'fixed'
-    body.style.top = `-${elevatedPageScrollYRef.current}px`
-    body.style.width = '100%'
-    body.style.overflow = 'hidden'
-
     updateAutocompletePanelMaxHeight()
-    const settle = window.setTimeout(() => updateAutocompletePanelMaxHeight(), 100)
-
-    const onViewport = () => {
-      // Keyboard open/close may change available height, but not composer top (fixed).
-      setElevatedComposerLayout((prev) => {
-        if (!prev) return prev
-        const top = getStickySiteHeaderHeight()
-        return prev.top === top ? prev : { ...prev, top }
-      })
-      updateAutocompletePanelMaxHeight()
-    }
-
+    const onViewportOrScroll = () => updateAutocompletePanelMaxHeight()
     const vv = window.visualViewport
-    vv?.addEventListener('resize', onViewport)
-    vv?.addEventListener('scroll', onViewport)
-    window.addEventListener('resize', onViewport)
-
+    vv?.addEventListener('resize', onViewportOrScroll)
+    vv?.addEventListener('scroll', onViewportOrScroll)
+    window.addEventListener('resize', onViewportOrScroll)
+    window.addEventListener('scroll', onViewportOrScroll, { passive: true })
     return () => {
-      window.clearTimeout(settle)
-      vv?.removeEventListener('resize', onViewport)
-      vv?.removeEventListener('scroll', onViewport)
-      window.removeEventListener('resize', onViewport)
-      body.style.position = prevPosition
-      body.style.top = prevTop
-      body.style.width = prevWidth
-      body.style.overflow = prevOverflow
-      window.scrollTo(0, elevatedPageScrollYRef.current)
+      vv?.removeEventListener('resize', onViewportOrScroll)
+      vv?.removeEventListener('scroll', onViewportOrScroll)
+      window.removeEventListener('resize', onViewportOrScroll)
+      window.removeEventListener('scroll', onViewportOrScroll)
     }
-  }, [
-    mobileComposerElevated,
-    showAutocompletePanel,
-    showBuildFooter,
-    buildFooterHeight,
-    inputValue,
-    viewAllExpanded,
-    elevatedComposerLayout?.top,
-  ])
+  }, [showAutocompletePanel, showBuildFooter, buildFooterHeight, inputValue, viewAllExpanded])
 
   const allEssentialsVisible = !hasVisibleEssentials || hiddenEssentialsCount === 0 || showMoreEssentials
 
@@ -3913,25 +3841,9 @@ function App() {
               </div>
             ) : (
               <>
-        {elevatedComposerLayout ? (
-          <div
-            className="mx-auto w-full max-w-[768px] max-md:block md:hidden"
-            style={{ height: elevatedComposerLayout.placeholderHeight }}
-            aria-hidden="true"
-          />
-        ) : null}
         <div
           id="create-list-input"
-          className={`mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4 ${
-            elevatedComposerLayout
-              ? 'max-md:fixed max-md:left-0 max-md:right-0 max-md:z-40 max-md:px-4 max-md:shadow-[0_8px_24px_rgba(0,0,0,0.08)]'
-              : ''
-          }`}
-          style={
-            elevatedComposerLayout
-              ? { top: elevatedComposerLayout.top }
-              : undefined
-          }
+          className="mx-auto w-full max-w-[768px] border border-[#ddd] bg-white p-3 sm:p-4"
         >
           <form
             className="block"
@@ -3968,7 +3880,6 @@ function App() {
                 onPaste={handleListInputPaste}
                 onKeyDown={handleListInputKeyDown}
                 onFocus={() => {
-                  setListInputFocused(true)
                   setListInputError('')
                   if (isLikelyUiPlaceholderList(inputValue)) {
                     setInputValue('')
@@ -3985,9 +3896,8 @@ function App() {
                   ) {
                     setAutocompleteOpen(true)
                   }
-                }}
-                onBlur={() => {
-                  setListInputFocused(false)
+                  // Recalc panel height after the keyboard/visualViewport settles; do not reposition the component.
+                  window.setTimeout(() => updateAutocompletePanelMaxHeight(), 350)
                 }}
                 aria-invalid={listInputError ? true : undefined}
                 aria-describedby={
